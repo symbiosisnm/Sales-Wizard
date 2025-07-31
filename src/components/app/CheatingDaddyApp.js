@@ -11,6 +11,8 @@ import { AdvancedView } from '../views/AdvancedView.js';
 // Voice assistant helper provides speech recognition via the Web Speech API.
 // It exports a startListening() function that returns a stop function.
 import { startListening } from '../../utils/voiceAssistant.js';
+// Live streaming helper integrates with Gemini Live via backend
+import { startLiveStreaming } from '../../utils/liveStreamer.js';
 
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
@@ -172,6 +174,11 @@ export class CheatingDaddyApp extends LitElement {
         // automatically query the local Gemini backend. The callback
         // assigns responses via setResponse(). A stop function is saved
         // so it can be cleaned up in disconnectedCallback().
+
+        // Start the voice assistant to listen for spoken questions and
+        // automatically query the local Gemini backend. The callback
+        // assigns responses via setResponse(). A stop function is saved
+        // so it can be cleaned up in disconnectedCallback().
         this._stopVoiceAssistant = startListening(async transcript => {
             try {
                 const res = await fetch('http://localhost:3001/ask', {
@@ -187,6 +194,20 @@ export class CheatingDaddyApp extends LitElement {
                 console.error('Voice assistant fetch failed:', err);
             }
         });
+
+        // Start live streaming of audio and screen to the backend. This
+        // function opens a WebSocket connection and pipes Gemini Live
+        // responses directly into the UI. The returned cleanup
+        // function stops both media capture and closes the socket.
+        startLiveStreaming(response => {
+            if (response) {
+                this.setResponse(response);
+            }
+        }).then(stopFn => {
+            this._stopLiveStreaming = stopFn;
+        }).catch(err => {
+            console.error('Failed to start live streaming:', err);
+        });
     }
 
     disconnectedCallback() {
@@ -194,6 +215,12 @@ export class CheatingDaddyApp extends LitElement {
         if (this._stopVoiceAssistant) {
             this._stopVoiceAssistant();
             this._stopVoiceAssistant = null;
+        }
+
+        // Stop live streaming if it's active
+        if (this._stopLiveStreaming) {
+            this._stopLiveStreaming();
+            this._stopLiveStreaming = null;
         }
 
         super.disconnectedCallback();
