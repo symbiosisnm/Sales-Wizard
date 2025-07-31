@@ -8,6 +8,10 @@ import { AssistantView } from '../views/AssistantView.js';
 import { OnboardingView } from '../views/OnboardingView.js';
 import { AdvancedView } from '../views/AdvancedView.js';
 
+// Voice assistant helper provides speech recognition via the Web Speech API.
+// It exports a startListening() function that returns a stop function.
+import { startListening } from '../../utils/voiceAssistant.js';
+
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
         * {
@@ -47,6 +51,12 @@ export class CheatingDaddyApp extends LitElement {
             border-radius: var(--content-border-radius);
             transition: all 0.15s ease-out;
             background: var(--main-content-background);
+            /* Add a frosted glass effect. The backdrop-filter property blurs and
+             * saturates whatever is behind the main content, giving a liquid
+             * glass look reminiscent of modern UI designs. Including the
+             * vendor prefixed version ensures support on WebKit browsers. */
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
         }
 
         .main-content.with-border {
@@ -157,9 +167,35 @@ export class CheatingDaddyApp extends LitElement {
                 this._isClickThrough = isEnabled;
             });
         }
+
+        // Start the voice assistant to listen for spoken questions and
+        // automatically query the local Gemini backend. The callback
+        // assigns responses via setResponse(). A stop function is saved
+        // so it can be cleaned up in disconnectedCallback().
+        this._stopVoiceAssistant = startListening(async transcript => {
+            try {
+                const res = await fetch('http://localhost:3001/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: transcript }),
+                });
+                const data = await res.json();
+                if (data.reply) {
+                    this.setResponse(data.reply);
+                }
+            } catch (err) {
+                console.error('Voice assistant fetch failed:', err);
+            }
+        });
     }
 
     disconnectedCallback() {
+        // Stop the voice assistant when the component is detached.
+        if (this._stopVoiceAssistant) {
+            this._stopVoiceAssistant();
+            this._stopVoiceAssistant = null;
+        }
+
         super.disconnectedCallback();
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
