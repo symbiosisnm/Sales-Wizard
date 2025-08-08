@@ -1,0 +1,18 @@
+:root { --bg: rgba(255,255,255,0.12); --blur: 12px; --fg: #eaf0ff; --muted: #9fb0cc; }
+html,body,#root { height: 100%; margin: 0; }
+.hud {
+  position: fixed; inset: 12px;
+  display: grid; grid-template-rows: auto auto auto 1fr;
+  gap: 8px; padding: 12px;
+  backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+  background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06));
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 18px; color: var(--fg);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+}
+.status { font-weight: 700; letter-spacing: 1px; color: #dff; }
+.buttons { display:flex; gap:8px; }
+.buttons button { background: var(--bg); color:var(--fg); border:1px solid rgba(255,255,255,.25); padding:8px 12px; border-radius:10px; cursor:pointer; }
+.bar { display:flex; gap:8px; }
+.bar input { flex:1; background: rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:10px; color:var(--fg); }
+.log { overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); }
+.line { margin-bottom: 4px; }
