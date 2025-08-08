@@ -1,35 +1,74 @@
 const { WebSocketServer } = require('ws');
+const { handleInput } = require('./src/providers/geminiLive.js');
 
 function attachLiveGateway(server) {
   const wss = new WebSocketServer({ server, path: '/live' });
+  server.on('close', () => wss.close());
+
   wss.on('connection', (ws) => {
     ws.on('message', (data) => {
-      let msg;
+      let frame;
       try {
-        msg = JSON.parse(data);
+        frame = JSON.parse(data);
       } catch {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            code: 'bad_request',
+            message: 'invalid json',
+          })
+        );
         return;
       }
-      switch (msg.type) {
+
+      if (!frame.type) {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            code: 'bad_request',
+            message: 'missing type',
+          })
+        );
+        return;
+      }
+
+      switch (frame.type) {
         case 'start':
+          if (!frame.apiKey) {
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                code: 'bad_request',
+                message: 'missing apiKey',
+              })
+            );
+            return;
+          }
           ws.send(JSON.stringify({ type: 'status', status: 'ok' }));
           ws.send(JSON.stringify({ type: 'model', model: 'mock-gemini' }));
           break;
         case 'input_text':
-          ws.send(JSON.stringify({ type: 'text', text: msg.text }));
-          break;
         case 'input_audio_buffer':
-          ws.send(JSON.stringify({ type: 'audio', data: msg.data || null }));
+        case 'input_image': {
+          const result = handleInput(frame);
+          if (result) ws.send(JSON.stringify(result));
           break;
-        case 'input_image':
-          ws.send(JSON.stringify({ type: 'image', data: msg.data || null }));
-          break;
+        }
         case 'end':
           ws.close();
           break;
+        default:
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              code: 'bad_request',
+              message: 'unknown type',
+            })
+          );
       }
     });
   });
+
   return wss;
 }
 

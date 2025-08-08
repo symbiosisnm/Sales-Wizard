@@ -10,6 +10,10 @@
 
 A real-time AI assistant that provides contextual help during video calls, interviews, presentations, and meetings using screen capture and audio analysis.
 
+## Development
+
+Run `nvm use`, then `npm run setup` to install all workspaces. Use `npm run dev:server` and `npm run dev:desktop` to run apps.
+
 ## Features
 
 - **Live AI Assistance**: Real-time help powered by Google Gemini 2.0 Flash Live
