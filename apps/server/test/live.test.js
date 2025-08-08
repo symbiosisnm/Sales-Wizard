@@ -1,9 +1,9 @@
-import test from 'node:test';
-import assert from 'node:assert';
-import { createServer } from 'http';
-import { once } from 'events';
-import WebSocket from 'ws';
-import { attachLiveGateway } from '../attachLiveGateway.js';
+const test = require('node:test');
+const assert = require('node:assert');
+const { createServer } = require('http');
+const { once } = require('events');
+const WebSocket = require('ws');
+const { attachLiveGateway } = require('../attachLiveGateway.js');
 
 function waitFor(condition, timeout = 1000) {
   const start = Date.now();
