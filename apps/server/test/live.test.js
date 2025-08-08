@@ -46,5 +46,5 @@ test('live gateway message flow', async () => {
 
   ws.send(JSON.stringify({ type: 'end' }));
   await once(ws, 'close');
-  httpServer.close();
+  await new Promise((resolve) => httpServer.close(resolve));
 });
