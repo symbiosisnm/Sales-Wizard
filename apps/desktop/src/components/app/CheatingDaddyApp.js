@@ -11,8 +11,8 @@ import { AdvancedView } from '../views/AdvancedView.js';
 // Voice assistant helper provides speech recognition via the Web Speech API.
 // It exports a startListening() function that returns a stop function.
 import { startListening } from '../../utils/voiceAssistant.js';
-// Live streaming helper integrates with Gemini Live via backend
-import { startLiveStreaming } from '../../utils/liveStreamer.js';
+import { createLiveClient } from '../../services/llmClient.js';
+import store from '../../utils/store.js';
 
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
@@ -148,6 +148,10 @@ export class CheatingDaddyApp extends LitElement {
         this._awaitingNewResponse = false;
         this._currentResponseIsComplete = true;
         this.shouldAnimateResponse = false;
+        store.on('status', s => {
+            this.statusText = s;
+        });
+        this.liveClient = null;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -195,19 +199,6 @@ export class CheatingDaddyApp extends LitElement {
             }
         });
 
-        // Start live streaming of audio and screen to the backend. This
-        // function opens a WebSocket connection and pipes Gemini Live
-        // responses directly into the UI. The returned cleanup
-        // function stops both media capture and closes the socket.
-        startLiveStreaming(response => {
-            if (response) {
-                this.setResponse(response);
-            }
-        }).then(stopFn => {
-            this._stopLiveStreaming = stopFn;
-        }).catch(err => {
-            console.error('Failed to start live streaming:', err);
-        });
     }
 
     disconnectedCallback() {
@@ -215,12 +206,6 @@ export class CheatingDaddyApp extends LitElement {
         if (this._stopVoiceAssistant) {
             this._stopVoiceAssistant();
             this._stopVoiceAssistant = null;
-        }
-
-        // Stop live streaming if it's active
-        if (this._stopLiveStreaming) {
-            this._stopLiveStreaming();
-            this._stopLiveStreaming = null;
         }
 
         super.disconnectedCallback();
@@ -339,13 +324,26 @@ export class CheatingDaddyApp extends LitElement {
             return;
         }
 
-        await cheddar.initializeGemini(this.selectedProfile, this.selectedLanguage);
-        // Pass the screenshot interval as string (including 'manual' option)
-        cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        const serverUrl = localStorage.getItem('serverUrl') || 'ws://localhost:8787';
+        store.setStatus('connecting');
+        this.liveClient = createLiveClient({ reconnect: true });
+        await this.liveClient.connect(serverUrl);
+        this.liveClient.start(apiKey, 'TEXT');
+        store.setStatus('ready');
+        this.liveClient.on('close', () => store.setStatus('closed'));
+        this.liveClient.on('error', () => store.setStatus('error'));
         this.responses = [];
         this.currentResponseIndex = -1;
         this.startTime = Date.now();
         this.currentView = 'assistant';
+    }
+
+    handleStop() {
+        if (this.liveClient) {
+            this.liveClient.end();
+            this.liveClient = null;
+            store.setStatus('closed');
+        }
     }
 
     async handleAPIKeyHelp() {
