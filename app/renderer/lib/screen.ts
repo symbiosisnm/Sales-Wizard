@@ -7,7 +7,8 @@ export async function getScreenStream(): Promise<MediaStream> {
 
 export function startScreenBursting(stream: MediaStream, onFrame: (b64: string) => void, fps = 1) {
   const [track] = stream.getVideoTracks();
-  const imageCapture = new ImageCapture(track);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const imageCapture: any = new (window as any).ImageCapture(track);
   let timer: number | null = null;
 
   async function shoot() {

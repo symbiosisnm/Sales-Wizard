@@ -18,7 +18,7 @@ export async function textHandler(req: Request, res: Response) {
       contents: [{ role: 'user', parts }]
     });
     const text =
-      gen.response?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join('') ?? '';
+      gen.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join('') ?? '';
     res.json({ text });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message || e) });

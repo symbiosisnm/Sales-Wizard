@@ -37,8 +37,10 @@ app.whenReady().then(async () => {
   startBackend();
   await createWindow();
 
+  let clickThrough = false;
   globalShortcut.register('CommandOrControl+M', () => {
-    win?.setIgnoreMouseEvents(!win.isMouseEventsEnabled(), { forward: true });
+    clickThrough = !clickThrough;
+    win?.setIgnoreMouseEvents(clickThrough, { forward: true });
   });
 });
 
