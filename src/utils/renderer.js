@@ -407,12 +407,12 @@ function setupWindowsLoopbackProcessing() {
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     console.log(`Capturing ${isManual ? 'manual' : 'automated'} screenshot...`);
-    if (!mediaStream) return;
+    if (!mediaStream) return { success: false, error: 'No media stream' };
 
     // Check rate limiting for automated screenshots only
     if (!isManual && tokenTracker.shouldThrottle()) {
         console.log('⚠️ Automated screenshot skipped due to rate limiting');
-        return;
+        return { success: false, error: 'Rate limited' };
     }
 
     // Lazy init of video element
@@ -438,7 +438,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     // Check if video is ready
     if (hiddenVideo.readyState < 2) {
         console.warn('Video not ready yet, skipping screenshot');
-        return;
+        return { success: false, error: 'Video not ready' };
     }
 
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
@@ -469,53 +469,65 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
             qualityValue = 0.7; // Default to medium
     }
 
-    offscreenCanvas.toBlob(
-        async blob => {
-            if (!blob) {
-                console.error('Failed to create blob from canvas');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const base64data = reader.result.split(',')[1];
-
-                // Validate base64 data
-                if (!base64data || base64data.length < 100) {
-                    console.error('Invalid base64 data generated');
-                    return;
+    return new Promise(resolve => {
+        offscreenCanvas.toBlob(
+            async blob => {
+                if (!blob) {
+                    console.error('Failed to create blob from canvas');
+                    return resolve({ success: false, error: 'Blob creation failed' });
                 }
 
-                const result = await ipcRenderer.invoke('send-image-content', {
-                    data: base64data,
-                });
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const base64data = reader.result.split(',')[1];
 
-                if (result.success) {
-                    // Track image tokens after successful send
-                    const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
-                    tokenTracker.addTokens(imageTokens, 'image');
-                    console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${offscreenCanvas.width}x${offscreenCanvas.height})`);
-                } else {
-                    console.error('Failed to send image:', result.error);
-                }
-            };
-            reader.readAsDataURL(blob);
-        },
-        'image/jpeg',
-        qualityValue
-    );
+                    // Validate base64 data
+                    if (!base64data || base64data.length < 100) {
+                        console.error('Invalid base64 data generated');
+                        return resolve({ success: false, error: 'Invalid base64 data' });
+                    }
+
+                    try {
+                        const result = await ipcRenderer.invoke('send-image-content', {
+                            data: base64data,
+                        });
+
+                        if (result.success) {
+                            // Track image tokens after successful send
+                            const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
+                            tokenTracker.addTokens(imageTokens, 'image');
+                            console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${offscreenCanvas.width}x${offscreenCanvas.height})`);
+                        } else {
+                            console.error('Failed to send image:', result.error);
+                        }
+
+                        resolve(result);
+                    } catch (err) {
+                        console.error('Failed to send image:', err);
+                        resolve({ success: false, error: err.message });
+                    }
+                };
+                reader.readAsDataURL(blob);
+            },
+            'image/jpeg',
+            qualityValue
+        );
+    });
 }
 
 async function captureManualScreenshot(imageQuality = null) {
     console.log('Manual screenshot triggered');
     const quality = imageQuality || currentImageQuality;
-    await captureScreenshot(quality, true); // Pass true for isManual
-    await new Promise(resolve => setTimeout(resolve, 2000)); // TODO shitty hack
-    await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
+    const result = await captureScreenshot(quality, true); // Pass true for isManual
+    if (result?.success) {
+        await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
         So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
         If its a question about the website, give me the answer no bs, complete answer.
         If its a mcq question, give me the answer no bs, complete answer.
         `);
+    } else {
+        console.warn('Skipping text message due to failed screenshot');
+    }
 }
 
 // Expose functions to global scope for external access
