@@ -9,8 +9,8 @@
         "package": "electron-forge package",
         "make": "electron-forge make",
         "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\"",
-    "start:backend": "node backend/server.js"
+        "lint": "eslint .",
+        "start:backend": "node backend/server.js"
     },
     "keywords": [
         "cheating daddy",
@@ -26,7 +26,7 @@
     "license": "GPL-3.0",
     "dependencies": {
     "@google/genai": "^1.2.0",
-    "@google/generative-ai": "^1.0.0",
+    "@google/generative-ai": "^0.24.1",
     "express": "^4.19.2",
     "ws": "^8.16.0",
     "electron-squirrel-startup": "^1.0.1",
@@ -43,6 +43,11 @@
         "@electron-forge/plugin-fuses": "^7.8.1",
         "@electron/fuses": "^1.8.0",
         "@reforged/maker-appimage": "^5.0.0",
-        "electron": "^30.0.5"
+        "electron": "^30.0.5",
+        "eslint": "^8.57.1",
+        "eslint-config-standard": "^17.1.0",
+        "eslint-plugin-import": "^2.32.0",
+        "eslint-plugin-n": "^16.6.2",
+        "eslint-plugin-promise": "^6.6.0"
     }
 }
