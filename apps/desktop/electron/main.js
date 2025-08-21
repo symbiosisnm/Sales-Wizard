@@ -13,7 +13,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  win.loadFile('index.html');
+  win.loadFile(path.join(__dirname, '../../../src/index.html'));
 }
 
 app.whenReady().then(() => {
