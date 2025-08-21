@@ -9,8 +9,8 @@
         "package": "electron-forge package",
         "make": "electron-forge make",
         "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\"",
-    "start:backend": "node backend/server.js"
+        "lint": "echo \"No linting configured\"",
+        "start:backend": "node backend/server.js"
     },
     "keywords": [
         "cheating daddy",
@@ -25,12 +25,11 @@
     },
     "license": "GPL-3.0",
     "dependencies": {
-    "@google/genai": "^1.2.0",
-    "@google/generative-ai": "^1.0.0",
-    "express": "^4.19.2",
-    "ws": "^8.16.0",
-    "electron-squirrel-startup": "^1.0.1",
-    "tesseract.js": "^4.0.3"
+        "@google/genai": "^1.2.0",
+        "electron-squirrel-startup": "^1.0.1",
+        "express": "^4.19.2",
+        "tesseract.js": "^4.0.3",
+        "ws": "^8.16.0"
     },
     "devDependencies": {
         "@electron-forge/cli": "^7.8.1",
