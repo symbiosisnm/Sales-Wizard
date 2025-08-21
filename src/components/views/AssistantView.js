@@ -443,8 +443,8 @@ export class AssistantView extends LitElement {
         this.loadFontSize();
 
         // Set up IPC listeners for keyboard shortcuts
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
 
             this.handlePreviousResponse = () => {
                 console.log('Received navigate-previous-response message');
@@ -477,8 +477,8 @@ export class AssistantView extends LitElement {
         super.disconnectedCallback();
 
         // Clean up IPC listeners
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             if (this.handlePreviousResponse) {
                 ipcRenderer.removeListener('navigate-previous-response', this.handlePreviousResponse);
             }

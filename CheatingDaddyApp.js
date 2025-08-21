@@ -8,6 +8,12 @@ import { AssistantView } from '../views/AssistantView.js';
 import { OnboardingView } from '../views/OnboardingView.js';
 import { AdvancedView } from '../views/AdvancedView.js';
 
+// Voice assistant helper provides speech recognition via the Web Speech API.
+// It exports a startListening() function that returns a stop function.
+import { startListening } from '../../utils/voiceAssistant.js';
+// Live streaming helper integrates with Gemini Live via backend
+import { startLiveStreaming } from '../../utils/liveStreamer.js';
+
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
         * {
@@ -150,9 +156,9 @@ export class CheatingDaddyApp extends LitElement {
     connectedCallback() {
         super.connectedCallback();
 
-        // Set up IPC listeners if needed
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        // Set up IPC listeners if available
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             ipcRenderer.on('update-response', (_, response) => {
                 this.setResponse(response);
             });
@@ -163,12 +169,63 @@ export class CheatingDaddyApp extends LitElement {
                 this._isClickThrough = isEnabled;
             });
         }
+
+        // Start the voice assistant to listen for spoken questions and
+        // automatically query the local Gemini backend. The callback
+        // assigns responses via setResponse(). A stop function is saved
+        // so it can be cleaned up in disconnectedCallback().
+
+        // Start the voice assistant to listen for spoken questions and
+        // automatically query the local Gemini backend. The callback
+        // assigns responses via setResponse(). A stop function is saved
+        // so it can be cleaned up in disconnectedCallback().
+        this._stopVoiceAssistant = startListening(async transcript => {
+            try {
+                const res = await fetch('http://localhost:3001/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: transcript }),
+                });
+                const data = await res.json();
+                if (data.reply) {
+                    this.setResponse(data.reply);
+                }
+            } catch (err) {
+                console.error('Voice assistant fetch failed:', err);
+            }
+        });
+
+        // Start live streaming of audio and screen to the backend. This
+        // function opens a WebSocket connection and pipes Gemini Live
+        // responses directly into the UI. The returned cleanup
+        // function stops both media capture and closes the socket.
+        startLiveStreaming(response => {
+            if (response) {
+                this.setResponse(response);
+            }
+        }).then(stopFn => {
+            this._stopLiveStreaming = stopFn;
+        }).catch(err => {
+            console.error('Failed to start live streaming:', err);
+        });
     }
 
     disconnectedCallback() {
+        // Stop the voice assistant when the component is detached.
+        if (this._stopVoiceAssistant) {
+            this._stopVoiceAssistant();
+            this._stopVoiceAssistant = null;
+        }
+
+        // Stop live streaming if it's active
+        if (this._stopLiveStreaming) {
+            this._stopLiveStreaming();
+            this._stopLiveStreaming = null;
+        }
+
         super.disconnectedCallback();
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             ipcRenderer.removeAllListeners('update-response');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
@@ -246,8 +303,8 @@ export class CheatingDaddyApp extends LitElement {
             cheddar.stopCapture();
 
             // Close the session
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.ipcRenderer) {
+                const ipcRenderer = window.ipcRenderer;
                 await ipcRenderer.invoke('close-session');
             }
             this.sessionActive = false;
@@ -255,16 +312,16 @@ export class CheatingDaddyApp extends LitElement {
             console.log('Session closed');
         } else {
             // Quit the entire application
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.ipcRenderer) {
+                const ipcRenderer = window.ipcRenderer;
                 await ipcRenderer.invoke('quit-application');
             }
         }
     }
 
     async handleHideToggle() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             await ipcRenderer.invoke('toggle-window-visibility');
         }
     }
@@ -292,8 +349,8 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async handleAPIKeyHelp() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             await ipcRenderer.invoke('open-external', 'https://cheatingdaddy.com/help/api-key');
         }
     }
@@ -328,8 +385,8 @@ export class CheatingDaddyApp extends LitElement {
 
     // Help view event handlers
     async handleExternalLinkClick(url) {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             await ipcRenderer.invoke('open-external', url);
         }
     }
@@ -362,8 +419,8 @@ export class CheatingDaddyApp extends LitElement {
         super.updated(changedProperties);
 
         // Only notify main process of view change if the view actually changed
-        if (changedProperties.has('currentView') && window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (changedProperties.has('currentView') && window.ipcRenderer) {
+            const ipcRenderer = window.ipcRenderer;
             ipcRenderer.send('view-changed', this.currentView);
 
             // Add a small delay to smooth out the transition
@@ -511,9 +568,9 @@ export class CheatingDaddyApp extends LitElement {
         this.updateLayoutMode();
 
         // Notify main process about layout change for window resizing
-        if (window.require) {
+        if (window.ipcRenderer) {
             try {
-                const { ipcRenderer } = window.require('electron');
+                const ipcRenderer = window.ipcRenderer;
                 await ipcRenderer.invoke('update-sizes');
             } catch (error) {
                 console.error('Failed to update sizes in main process:', error);
