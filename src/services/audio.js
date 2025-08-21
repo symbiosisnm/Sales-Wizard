@@ -1,8 +1,8 @@
 /**
  * Audio transcription service for Cheating Daddy.
  * Uses the Web Speech API when available, otherwise records a short
- * snippet from the microphone and sends it to a third‑party API
- * (OpenAI Whisper) for transcription.
+ * snippet from the microphone and sends it to either a local model or
+ * the Gemini API for transcription.
  *
  * Returns the transcription text or an empty string if transcription fails.
  */
@@ -26,7 +26,7 @@ export async function transcribeAudio() {
       });
     }
 
-    // Fallback: record audio and send to OpenAI Whisper
+    // Fallback: record audio and send to the configured transcription service
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
       throw new Error('No speech recognition capability');
     }
@@ -41,26 +41,69 @@ export async function transcribeAudio() {
       recorder.onstop = async () => {
         try {
           const blob = new Blob(chunks, { type: 'audio/webm' });
-          const form = new FormData();
-          form.append('file', blob, 'speech.webm');
-          form.append('model', 'whisper-1');
 
-          const apiKey = process.env.OPENAI_API_KEY;
-          if (!apiKey) throw new Error('Missing OpenAI API key');
+          const method =
+            process.env.TRANSCRIPTION_METHOD ||
+            (process.env.GEMINI_API_KEY ? 'gemini' : process.env.LOCAL_TRANSCRIBE_URL ? 'local' : '');
+          if (!method) throw new Error('No transcription method configured');
 
-          const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: form,
-          });
+          if (method === 'gemini') {
+            const apiKey = process.env.GEMINI_API_KEY;
+            if (!apiKey) throw new Error('Missing Gemini API key');
 
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error('Transcription API error: ' + res.status + ' ' + text);
+            const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [
+                    {
+                      role: 'user',
+                      parts: [
+                        { text: 'Transcribe the following audio.' },
+                        { inlineData: { mimeType: 'audio/webm', data: base64 } },
+                      ],
+                    },
+                  ],
+                }),
+              }
+            );
+
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error('Transcription API error: ' + res.status + ' ' + text);
+            }
+
+            const data = await res.json();
+            resolve(
+              data.candidates &&
+                data.candidates[0] &&
+                data.candidates[0].content &&
+                data.candidates[0].content.parts &&
+                data.candidates[0].content.parts[0] &&
+                data.candidates[0].content.parts[0].text
+                ? data.candidates[0].content.parts[0].text.trim()
+                : ''
+            );
+          } else if (method === 'local') {
+            const url = process.env.LOCAL_TRANSCRIBE_URL;
+            if (!url) throw new Error('Missing local transcription URL');
+
+            const form = new FormData();
+            form.append('file', blob, 'speech.webm');
+
+            const res = await fetch(url, { method: 'POST', body: form });
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error('Transcription API error: ' + res.status + ' ' + text);
+            }
+            const data = await res.json();
+            resolve(data.text || data.transcript || '');
+          } else {
+            throw new Error('Unsupported transcription method: ' + method);
           }
-
-          const data = await res.json();
-          resolve(data.text || '');
         } catch (err) {
           reject(err);
         } finally {
