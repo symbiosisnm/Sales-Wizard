@@ -156,9 +156,9 @@ export class CheatingDaddyApp extends LitElement {
     connectedCallback() {
         super.connectedCallback();
 
-        // Set up IPC listeners if needed
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        // Set up IPC listeners if available
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             ipcRenderer.on('update-response', (_, response) => {
                 this.setResponse(response);
             });
@@ -224,8 +224,8 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         super.disconnectedCallback();
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             ipcRenderer.removeAllListeners('update-response');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
@@ -303,8 +303,8 @@ export class CheatingDaddyApp extends LitElement {
             cheddar.stopCapture();
 
             // Close the session
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.electron?.ipcRenderer) {
+                const { ipcRenderer } = window.electron;
                 await ipcRenderer.invoke('close-session');
             }
             this.sessionActive = false;
@@ -312,16 +312,16 @@ export class CheatingDaddyApp extends LitElement {
             console.log('Session closed');
         } else {
             // Quit the entire application
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.electron?.ipcRenderer) {
+                const { ipcRenderer } = window.electron;
                 await ipcRenderer.invoke('quit-application');
             }
         }
     }
 
     async handleHideToggle() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             await ipcRenderer.invoke('toggle-window-visibility');
         }
     }
@@ -349,8 +349,8 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async handleAPIKeyHelp() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             await ipcRenderer.invoke('open-external', 'https://cheatingdaddy.com/help/api-key');
         }
     }
@@ -385,8 +385,8 @@ export class CheatingDaddyApp extends LitElement {
 
     // Help view event handlers
     async handleExternalLinkClick(url) {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             await ipcRenderer.invoke('open-external', url);
         }
     }
@@ -419,8 +419,8 @@ export class CheatingDaddyApp extends LitElement {
         super.updated(changedProperties);
 
         // Only notify main process of view change if the view actually changed
-        if (changedProperties.has('currentView') && window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (changedProperties.has('currentView') && window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             ipcRenderer.send('view-changed', this.currentView);
 
             // Add a small delay to smooth out the transition
@@ -568,9 +568,9 @@ export class CheatingDaddyApp extends LitElement {
         this.updateLayoutMode();
 
         // Notify main process about layout change for window resizing
-        if (window.require) {
+        if (window.electron?.ipcRenderer) {
             try {
-                const { ipcRenderer } = window.require('electron');
+                const { ipcRenderer } = window.electron;
                 await ipcRenderer.invoke('update-sizes');
             } catch (error) {
                 console.error('Failed to update sizes in main process:', error);
