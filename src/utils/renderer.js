@@ -1,5 +1,5 @@
 // renderer.js
-const { ipcRenderer } = require('electron');
+const { ipcRenderer } = window.electron || {};
 
 // Initialize random display name for UI components
 window.randomDisplayName = null;

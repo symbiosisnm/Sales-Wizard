@@ -40,8 +40,9 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         skipTaskbar: true,
         hiddenInMissionControl: true,
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false, // TODO: change to true
+            preload: path.join(__dirname, '../preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true,
             backgroundThrottling: false,
             enableBlinkFeatures: 'GetDisplayMedia',
             webSecurity: true,

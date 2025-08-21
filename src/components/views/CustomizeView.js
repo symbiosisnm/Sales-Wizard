@@ -605,8 +605,8 @@ export class CustomizeView extends LitElement {
     saveKeybinds() {
         localStorage.setItem('customKeybinds', JSON.stringify(this.keybinds));
         // Send to main process to update global shortcuts
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             ipcRenderer.send('update-keybinds', this.keybinds);
         }
     }
@@ -621,8 +621,8 @@ export class CustomizeView extends LitElement {
         this.keybinds = this.getDefaultKeybinds();
         localStorage.removeItem('customKeybinds');
         this.requestUpdate();
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electron?.ipcRenderer) {
+            const { ipcRenderer } = window.electron;
             ipcRenderer.send('update-keybinds', this.keybinds);
         }
     }
@@ -774,9 +774,9 @@ export class CustomizeView extends LitElement {
         localStorage.setItem('googleSearchEnabled', this.googleSearchEnabled.toString());
 
         // Notify main process if available
-        if (window.require) {
+        if (window.electron?.ipcRenderer) {
             try {
-                const { ipcRenderer } = window.require('electron');
+                const { ipcRenderer } = window.electron;
                 await ipcRenderer.invoke('update-google-search-setting', this.googleSearchEnabled);
             } catch (error) {
                 console.error('Failed to notify main process:', error);
