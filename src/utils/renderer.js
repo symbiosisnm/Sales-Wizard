@@ -30,9 +30,29 @@ let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+let lastCursorPoint = null;
+let screenshotRegionMode = 'full';
+
+let pttMicContext = null;
+let pttMicStream = null;
+let micEnabled = false;
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
+
+// Periodically fetch cursor location from main process
+function startCursorTracking() {
+    if (!window.electron?.ipcRenderer) return;
+    const poll = async () => {
+        try {
+            const res = await window.electron.ipcRenderer.invoke('get-cursor-point');
+            if (res?.success) lastCursorPoint = res;
+        } catch (_e) {}
+    };
+    setInterval(poll, 300);
+    poll();
+}
+startCursorTracking();
 
 // Token tracking system for rate limiting
 let tokenTracker = {
@@ -150,7 +170,14 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
-    const apiKey = localStorage.getItem('apiKey')?.trim();
+    let apiKey = null;
+    try {
+        const res = await ipcRenderer.invoke('secure-get-api-key');
+        if (res?.success && res.value) apiKey = res.value.trim();
+    } catch (_e) {}
+    if (!apiKey) {
+        apiKey = localStorage.getItem('apiKey')?.trim();
+    }
     if (apiKey) {
         const success = await ipcRenderer.invoke('initialize-gemini', apiKey, localStorage.getItem('customPrompt') || '', profile, language);
         if (success) {
@@ -181,6 +208,13 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     // Reset token tracker when starting new capture session
     tokenTracker.reset();
     console.log('🎯 Token tracker reset for new capture session');
+
+    // Load screenshot region preference
+    try {
+        screenshotRegionMode = localStorage.getItem('screenshotRegionMode') || 'full';
+    } catch (_e) {
+        screenshotRegionMode = 'full';
+    }
 
     try {
         if (isMacOS) {
@@ -405,6 +439,73 @@ function setupWindowsLoopbackProcessing() {
     audioProcessor.connect(audioContext.destination);
 }
 
+// Optional microphone streaming controlled by shortcut
+async function enableMicStreaming() {
+    if (micEnabled) return;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                sampleRate: SAMPLE_RATE,
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+            video: false,
+        });
+        pttMicContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+        const src = pttMicContext.createMediaStreamSource(stream);
+        const proc = pttMicContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+        let micBuf = [];
+        const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
+        proc.onaudioprocess = async e => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            micBuf.push(...inputData);
+            while (micBuf.length >= samplesPerChunk) {
+                const chunk = micBuf.splice(0, samplesPerChunk);
+                const pcm16 = convertFloat32ToInt16(chunk);
+                const base64Data = arrayBufferToBase64(pcm16.buffer);
+                await ipcRenderer.invoke('send-audio-content', {
+                    data: base64Data,
+                    mimeType: 'audio/pcm;rate=24000',
+                });
+            }
+        };
+        src.connect(proc);
+        proc.connect(pttMicContext.destination);
+        pttMicStream = stream;
+        micEnabled = true;
+        console.log('Microphone streaming enabled');
+    } catch (e) {
+        console.error('Failed to enable microphone streaming:', e);
+    }
+}
+
+function disableMicStreaming() {
+    micEnabled = false;
+    try {
+        if (pttMicStream) {
+            pttMicStream.getTracks().forEach(t => t.stop());
+            pttMicStream = null;
+        }
+        if (pttMicContext) {
+            pttMicContext.close();
+            pttMicContext = null;
+        }
+        console.log('Microphone streaming disabled');
+    } catch (e) {
+        console.error('Error disabling mic:', e);
+    }
+}
+
+window.addEventListener('cheddar-toggle-mic', async () => {
+    if (micEnabled) {
+        disableMicStreaming();
+    } else {
+        await enableMicStreaming();
+    }
+});
+
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     console.log(`Capturing ${isManual ? 'manual' : 'automated'} screenshot...`);
     if (!mediaStream) return { success: false, error: 'No media stream' };
@@ -443,8 +544,36 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
+    // Optionally crop around cursor to reduce tokens
+    let drawCanvas = offscreenCanvas;
+    if (screenshotRegionMode === 'cursor' && lastCursorPoint?.success) {
+        try {
+            const { point, bounds } = lastCursorPoint;
+            const screenW = bounds.width;
+            const screenH = bounds.height;
+            const vx = Math.max(0, Math.min(point.x - bounds.x, screenW));
+            const vy = Math.max(0, Math.min(point.y - bounds.y, screenH));
+            const sx = Math.floor((vx / screenW) * offscreenCanvas.width);
+            const sy = Math.floor((vy / screenH) * offscreenCanvas.height);
+            const cropW = Math.min(768, offscreenCanvas.width);
+            const cropH = Math.min(432, offscreenCanvas.height);
+            const halfW = Math.floor(cropW / 2);
+            const halfH = Math.floor(cropH / 2);
+            const srcX = Math.max(0, Math.min(offscreenCanvas.width - cropW, sx - halfW));
+            const srcY = Math.max(0, Math.min(offscreenCanvas.height - cropH, sy - halfH));
+            const cropped = document.createElement('canvas');
+            cropped.width = cropW;
+            cropped.height = cropH;
+            const ctx = cropped.getContext('2d');
+            ctx.drawImage(offscreenCanvas, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH);
+            drawCanvas = cropped;
+        } catch (_e) {
+            // ignore and fallback to full frame
+        }
+    }
+
     // Check if image was drawn properly by sampling a pixel
-    const imageData = offscreenContext.getImageData(0, 0, 1, 1);
+    const imageData = drawCanvas.getContext('2d').getImageData(0, 0, 1, 1);
     const isBlank = imageData.data.every((value, index) => {
         // Check if all pixels are black (0,0,0) or transparent
         return index === 3 ? true : value === 0;
@@ -470,7 +599,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     }
 
     return new Promise(resolve => {
-        offscreenCanvas.toBlob(
+        drawCanvas.toBlob(
             async blob => {
                 if (!blob) {
                     console.error('Failed to create blob from canvas');
@@ -494,9 +623,9 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
                         if (result.success) {
                             // Track image tokens after successful send
-                            const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
-                            tokenTracker.addTokens(imageTokens, 'image');
-                            console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${offscreenCanvas.width}x${offscreenCanvas.height})`);
+                    const imageTokens = tokenTracker.calculateImageTokens(drawCanvas.width, drawCanvas.height);
+                    tokenTracker.addTokens(imageTokens, 'image');
+                    console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${drawCanvas.width}x${drawCanvas.height})`);
                         } else {
                             console.error('Failed to send image:', result.error);
                         }
@@ -549,6 +678,9 @@ function stopCapture() {
         micAudioProcessor.disconnect();
         micAudioProcessor = null;
     }
+
+    // Stop optional mic streaming
+    disableMicStreaming();
 
     if (audioContext) {
         audioContext.close();
@@ -744,6 +876,9 @@ const cheddar = {
     // Platform detection
     isLinux: isLinux,
     isMacOS: isMacOS,
+
+    // Expose region mode
+    getScreenshotRegionMode: () => screenshotRegionMode,
 };
 
 // Make it globally available

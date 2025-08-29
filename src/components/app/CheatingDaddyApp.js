@@ -239,7 +239,22 @@ export class CheatingDaddyApp extends LitElement {
         if (text.includes('Ready') || text.includes('Listening') || text.includes('Error')) {
             this._currentResponseIsComplete = true;
             console.log('[setStatus] Marked current response as complete');
+            const last = this.responses?.length ? this.responses[this.responses.length - 1] : null;
+            if (last) this.maybeSpeak(last);
         }
+    }
+
+    maybeSpeak(text) {
+        try {
+            const enabled = localStorage.getItem('enableTTS') === 'true';
+            if (!enabled) return;
+            if (!window.speechSynthesis) return;
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 1.0;
+            utter.pitch = 1.0;
+            speechSynthesis.cancel();
+            speechSynthesis.speak(utter);
+        } catch (_e) {}
     }
 
     setResponse(response) {
