@@ -20,6 +20,14 @@ let maxReconnectionAttempts = 3;
 let reconnectionDelay = 2000; // 2 seconds between attempts
 let lastSessionParams = null;
 
+// Simple VAD state
+let vadPrevEnergy = 0;
+let vadSpeaking = false;
+let vadLastSendTs = 0;
+const VAD_THRESHOLD = 900; // PCM16 energy threshold
+const VAD_HYSTERESIS = 200;
+const VAD_SILENCE_SEND_MS = 2500;
+
 function sendToRenderer(channel, data) {
     const windows = BrowserWindow.getAllWindows();
     if (windows.length > 0) {
@@ -490,15 +498,44 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
     if (!geminiSessionRef.current) return;
 
     try {
-        process.stdout.write('.');
-        await geminiSessionRef.current.sendRealtimeInput({
-            audio: {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            },
-        });
+        const now = Date.now();
+        const energy = computeEnergyFromBase64Pcm16(base64Data);
+        const enteringSpeech = !vadSpeaking && energy > VAD_THRESHOLD;
+        const stayingSpeech = vadSpeaking && energy > VAD_THRESHOLD - VAD_HYSTERESIS;
+        const shouldSendKeepalive = !vadSpeaking && now - vadLastSendTs > VAD_SILENCE_SEND_MS;
+
+        if (enteringSpeech || stayingSpeech || shouldSendKeepalive) {
+            vadSpeaking = enteringSpeech || stayingSpeech;
+            vadPrevEnergy = energy;
+            vadLastSendTs = now;
+            process.stdout.write('.');
+            await geminiSessionRef.current.sendRealtimeInput({
+                audio: {
+                    data: base64Data,
+                    mimeType: 'audio/pcm;rate=24000',
+                },
+            });
+        } else {
+            vadPrevEnergy = energy;
+        }
     } catch (error) {
         console.error('Error sending audio to Gemini:', error);
+    }
+}
+
+function computeEnergyFromBase64Pcm16(base64Data) {
+    try {
+        const buf = Buffer.from(base64Data, 'base64');
+        const samples = buf.length / 2;
+        if (!samples) return 0;
+        let sum = 0;
+        for (let i = 0; i < samples; i++) {
+            const s = buf.readInt16LE(i * 2);
+            sum += Math.abs(s);
+        }
+        return sum / samples;
+    } catch (_e) {
+        return 0;
     }
 }
 

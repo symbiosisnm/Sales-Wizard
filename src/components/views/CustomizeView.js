@@ -415,6 +415,8 @@ export class CustomizeView extends LitElement {
         onLayoutModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
+        screenshotRegionMode: { type: String },
+        enableTTS: { type: Boolean },
     };
 
     constructor() {
@@ -425,6 +427,8 @@ export class CustomizeView extends LitElement {
         this.selectedImageQuality = 'medium';
         this.layoutMode = 'normal';
         this.keybinds = this.getDefaultKeybinds();
+        this.screenshotRegionMode = 'full';
+        this.enableTTS = false;
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
         this.onScreenshotIntervalChange = () => {};
@@ -446,6 +450,8 @@ export class CustomizeView extends LitElement {
 
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
+        this.loadScreenshotRegionMode();
+        this.loadTtsSetting();
         this.loadAdvancedModeSettings();
         this.loadBackgroundTransparency();
         this.loadFontSize();
@@ -583,6 +589,8 @@ export class CustomizeView extends LitElement {
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
+            panicHide: isMac ? 'Cmd+Esc' : 'Ctrl+Esc',
+            toggleMic: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -658,6 +666,16 @@ export class CustomizeView extends LitElement {
                 key: 'toggleClickThrough',
                 name: 'Toggle Click-through Mode',
                 description: 'Enable/disable click-through functionality',
+            },
+            {
+                key: 'panicHide',
+                name: 'Panic Hide',
+                description: 'Immediately hide overlay and stop capture',
+            },
+            {
+                key: 'toggleMic',
+                name: 'Toggle Microphone',
+                description: 'Enable/disable microphone streaming',
             },
             {
                 key: 'nextStep',
@@ -767,6 +785,28 @@ export class CustomizeView extends LitElement {
         if (googleSearchEnabled !== null) {
             this.googleSearchEnabled = googleSearchEnabled === 'true';
         }
+    }
+
+    loadScreenshotRegionMode() {
+        const m = localStorage.getItem('screenshotRegionMode');
+        this.screenshotRegionMode = m || 'full';
+    }
+
+    handleScreenshotRegionChange(e) {
+        this.screenshotRegionMode = e.target.value;
+        localStorage.setItem('screenshotRegionMode', this.screenshotRegionMode);
+        this.requestUpdate();
+    }
+
+    loadTtsSetting() {
+        const v = localStorage.getItem('enableTTS');
+        this.enableTTS = v ? v === 'true' : false;
+    }
+
+    handleTtsChange(e) {
+        this.enableTTS = e.target.checked;
+        localStorage.setItem('enableTTS', String(this.enableTTS));
+        this.requestUpdate();
     }
 
     async handleGoogleSearchChange(e) {
@@ -1070,9 +1110,27 @@ export class CustomizeView extends LitElement {
                                               : 'Lower quality, uses fewer tokens'
                                     }
                                 </div>
-                            </div>
                         </div>
                     </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Screenshot Region</label>
+                            <select class="form-control" .value=${this.screenshotRegionMode || 'full'} @change=${this.handleScreenshotRegionChange}>
+                                <option value="full" ?selected=${(this.screenshotRegionMode||'full') === 'full'}>Full Screen</option>
+                                <option value="cursor" ?selected=${(this.screenshotRegionMode||'full') === 'cursor'}>Around Cursor</option>
+                            </select>
+                            <div class="form-description">Capture a tight crop around cursor to reduce tokens</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Text-To-Speech</label>
+                            <div class="checkbox-group">
+                                <input type="checkbox" class="checkbox-input" id="enable-tts" .checked=${this.enableTTS} @change=${this.handleTtsChange} />
+                                <label for="enable-tts" class="checkbox-label"> Speak responses aloud</label>
+                            </div>
+                            <div class="form-description">Uses system speech synthesis</div>
+                        </div>
+                    </div>
+                </div>
                 </div>
 
                 <!-- Keyboard Shortcuts Section -->

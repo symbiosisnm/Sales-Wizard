@@ -21,6 +21,9 @@ let screenshotInterval = null;
 let audioContext = null;
 let audioProcessor = null;
 let micAudioProcessor = null;
+let pttMicContext = null;
+let pttMicStream = null;
+let micEnabled = false;
 let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
@@ -30,9 +33,26 @@ let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+let lastCursorPoint = null;
+let screenshotRegionMode = null; // 'full' | 'cursor'
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
+
+// Periodically poll cursor position for region cropping
+function startCursorTracking() {
+    if (!window.electron?.ipcRenderer) return;
+    const { ipcRenderer } = window.electron;
+    const poll = async () => {
+        try {
+            const res = await ipcRenderer.invoke('get-cursor-point');
+            if (res?.success) lastCursorPoint = res;
+        } catch (_) {}
+    };
+    setInterval(poll, 300);
+    poll();
+}
+startCursorTracking();
 
 // Token tracking system for rate limiting
 let tokenTracker = {
@@ -150,7 +170,12 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
-    const apiKey = localStorage.getItem('apiKey')?.trim();
+    let apiKey = null;
+    try {
+        const res = await ipcRenderer.invoke('secure-get-api-key');
+        if (res?.success && res.value) apiKey = res.value.trim();
+    } catch (_) {}
+    if (!apiKey) apiKey = localStorage.getItem('apiKey')?.trim();
     if (apiKey) {
         const success = await ipcRenderer.invoke('initialize-gemini', apiKey, localStorage.getItem('customPrompt') || '', profile, language);
         if (success) {
@@ -165,6 +190,73 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
 ipcRenderer.on('update-status', (event, status) => {
     console.log('Status update:', status);
     cheddar.setStatus(status);
+});
+
+// Optional push-to-toggle microphone streaming
+async function enableMicStreaming() {
+    if (micEnabled) return;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                sampleRate: SAMPLE_RATE,
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+            video: false,
+        });
+        pttMicContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+        const src = pttMicContext.createMediaStreamSource(stream);
+        const proc = pttMicContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+        let micBuf = [];
+        const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
+        proc.onaudioprocess = async e => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            micBuf.push(...inputData);
+            while (micBuf.length >= samplesPerChunk) {
+                const chunk = micBuf.splice(0, samplesPerChunk);
+                const pcmData16 = convertFloat32ToInt16(chunk);
+                const base64Data = arrayBufferToBase64(pcmData16.buffer);
+                await ipcRenderer.invoke('send-audio-content', {
+                    data: base64Data,
+                    mimeType: 'audio/pcm;rate=24000',
+                });
+            }
+        };
+        src.connect(proc);
+        proc.connect(pttMicContext.destination);
+        pttMicStream = stream;
+        micEnabled = true;
+        console.log('Microphone streaming enabled');
+    } catch (e) {
+        console.error('Failed to enable microphone streaming:', e);
+    }
+}
+
+function disableMicStreaming() {
+    micEnabled = false;
+    try {
+        if (pttMicStream) {
+            pttMicStream.getTracks().forEach(t => t.stop());
+            pttMicStream = null;
+        }
+        if (pttMicContext) {
+            pttMicContext.close();
+            pttMicContext = null;
+        }
+        console.log('Microphone streaming disabled');
+    } catch (e) {
+        console.error('Error disabling mic:', e);
+    }
+}
+
+window.addEventListener('cheddar-toggle-mic', async () => {
+    if (micEnabled) {
+        disableMicStreaming();
+    } else {
+        await enableMicStreaming();
+    }
 });
 
 // Listen for responses - REMOVED: This is handled in CheatingDaddyApp.js to avoid duplicates
@@ -183,6 +275,13 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     console.log('🎯 Token tracker reset for new capture session');
 
     try {
+        // Load screenshot region mode
+        try {
+            screenshotRegionMode = localStorage.getItem('screenshotRegionMode') || 'full';
+        } catch (_) {
+            screenshotRegionMode = 'full';
+        }
+
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             console.log('Starting macOS capture with SystemAudioDump...');
@@ -443,12 +542,39 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
+    // Optionally crop around cursor
+    let sourceCanvas = offscreenCanvas;
+    let drawCanvas = offscreenCanvas;
+    if ((screenshotRegionMode || 'full') === 'cursor' && lastCursorPoint?.success) {
+        try {
+            const { point, bounds } = lastCursorPoint;
+            const screenW = bounds.width;
+            const screenH = bounds.height;
+            const vx = Math.max(0, Math.min(point.x - bounds.x, screenW));
+            const vy = Math.max(0, Math.min(point.y - bounds.y, screenH));
+            const sx = Math.floor((vx / screenW) * offscreenCanvas.width);
+            const sy = Math.floor((vy / screenH) * offscreenCanvas.height);
+            const cropW = Math.min(768, offscreenCanvas.width);
+            const cropH = Math.min(432, offscreenCanvas.height);
+            const halfW = Math.floor(cropW / 2);
+            const halfH = Math.floor(cropH / 2);
+            const srcX = Math.max(0, Math.min(offscreenCanvas.width - cropW, sx - halfW));
+            const srcY = Math.max(0, Math.min(offscreenCanvas.height - cropH, sy - halfH));
+            const cropped = document.createElement('canvas');
+            cropped.width = cropW;
+            cropped.height = cropH;
+            const ctx = cropped.getContext('2d');
+            ctx.drawImage(offscreenCanvas, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH);
+            sourceCanvas = cropped;
+            drawCanvas = cropped;
+        } catch (_) {
+            // ignore and fall back to full frame
+        }
+    }
+
     // Check if image was drawn properly by sampling a pixel
-    const imageData = offscreenContext.getImageData(0, 0, 1, 1);
-    const isBlank = imageData.data.every((value, index) => {
-        // Check if all pixels are black (0,0,0) or transparent
-        return index === 3 ? true : value === 0;
-    });
+    const imageData = drawCanvas.getContext('2d').getImageData(0, 0, 1, 1);
+    const isBlank = imageData.data.every((value, index) => (index === 3 ? true : value === 0));
 
     if (isBlank) {
         console.warn('Screenshot appears to be blank/black');
@@ -470,7 +596,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     }
 
     return new Promise(resolve => {
-        offscreenCanvas.toBlob(
+        drawCanvas.toBlob(
             async blob => {
                 if (!blob) {
                     console.error('Failed to create blob from canvas');
@@ -492,11 +618,11 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                             data: base64data,
                         });
 
-                        if (result.success) {
+                    if (result.success) {
                             // Track image tokens after successful send
-                            const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
+                            const imageTokens = tokenTracker.calculateImageTokens(drawCanvas.width, drawCanvas.height);
                             tokenTracker.addTokens(imageTokens, 'image');
-                            console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${offscreenCanvas.width}x${offscreenCanvas.height})`);
+                            console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${drawCanvas.width}x${drawCanvas.height})`);
                         } else {
                             console.error('Failed to send image:', result.error);
                         }
@@ -538,6 +664,9 @@ function stopCapture() {
         clearInterval(screenshotInterval);
         screenshotInterval = null;
     }
+
+    // Stop optional microphone streaming
+    disableMicStreaming();
 
     if (audioProcessor) {
         audioProcessor.disconnect();
@@ -744,6 +873,9 @@ const cheddar = {
     // Platform detection
     isLinux: isLinux,
     isMacOS: isMacOS,
+
+    // Expose region mode for UI adjustments
+    getScreenshotRegionMode: () => screenshotRegionMode || 'full',
 };
 
 // Make it globally available

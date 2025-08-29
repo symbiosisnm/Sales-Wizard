@@ -150,6 +150,8 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
+        panicHide: isMac ? 'Cmd+Esc' : 'Ctrl+Esc',
+        toggleMic: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -220,6 +222,25 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
         }
     }
 
+    // Panic hide: hide window and stop capture
+    if (keybinds.panicHide) {
+        try {
+            globalShortcut.register(keybinds.panicHide, () => {
+                try {
+                    if (mainWindow.isVisible()) mainWindow.hide();
+                    mainWindow.webContents
+                        .executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()')
+                        .catch(() => {});
+                } catch (err) {
+                    console.error('Error during panicHide:', err);
+                }
+            });
+            console.log(`Registered panicHide: ${keybinds.panicHide}`);
+        } catch (error) {
+            console.error(`Failed to register panicHide (${keybinds.panicHide}):`, error);
+        }
+    }
+
     // Register toggle click-through shortcut
     if (keybinds.toggleClickThrough) {
         try {
@@ -237,6 +258,18 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             console.log(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
         } catch (error) {
             console.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
+        }
+    }
+
+    // Register toggle mic streaming
+    if (keybinds.toggleMic) {
+        try {
+            globalShortcut.register(keybinds.toggleMic, () => {
+                mainWindow.webContents.executeJavaScript('window.dispatchEvent(new CustomEvent("cheddar-toggle-mic"))');
+            });
+            console.log(`Registered toggleMic: ${keybinds.toggleMic}`);
+        } catch (error) {
+            console.error(`Failed to register toggleMic (${keybinds.toggleMic}):`, error);
         }
     }
 

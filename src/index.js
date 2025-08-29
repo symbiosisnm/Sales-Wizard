@@ -2,9 +2,10 @@ if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
+const { registerSecureStoreIpc } = require('./utils/secureStore');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
 const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
 
@@ -26,6 +27,7 @@ app.whenReady().then(async () => {
     createMainWindow();
     setupGeminiIpcHandlers(geminiSessionRef);
     setupGeneralIpcHandlers();
+    registerSecureStoreIpc();
 });
 
 app.on('window-all-closed', () => {
@@ -95,6 +97,22 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             console.error('Error getting random display name:', error);
             return 'System Monitor';
+        }
+    });
+
+    // Provide cursor position and display bounds for region screenshots
+    ipcMain.handle('get-cursor-point', async () => {
+        try {
+            const point = screen.getCursorScreenPoint();
+            const display = screen.getDisplayNearestPoint(point);
+            return {
+                success: true,
+                point,
+                bounds: display.bounds,
+                scaleFactor: display.scaleFactor || 1,
+            };
+        } catch (e) {
+            return { success: false, error: e.message };
         }
     });
 }

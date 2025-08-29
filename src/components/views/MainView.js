@@ -193,9 +193,18 @@ export class MainView extends LitElement {
         }
     }
 
-    handleInput(e) {
-        localStorage.setItem('apiKey', e.target.value);
-        // Clear error state when user starts typing
+    async handleInput(e) {
+        const value = e.target.value;
+        try {
+            const { ipcRenderer } = window.require?.('electron') || {};
+            if (ipcRenderer) {
+                await ipcRenderer.invoke('secure-set-api-key', value);
+            } else {
+                localStorage.setItem('apiKey', value);
+            }
+        } catch (_e) {
+            localStorage.setItem('apiKey', value);
+        }
         if (this.showApiKeyError) {
             this.showApiKeyError = false;
         }
@@ -216,6 +225,19 @@ export class MainView extends LitElement {
         localStorage.removeItem('onboardingCompleted');
         // Refresh the page to trigger onboarding
         window.location.reload();
+    }
+
+    async firstUpdated() {
+        try {
+            const { ipcRenderer } = window.require?.('electron') || {};
+            if (ipcRenderer) {
+                const res = await ipcRenderer.invoke('secure-get-api-key');
+                if (res?.success && res.value) {
+                    const input = this.renderRoot?.querySelector('input[type="password"]');
+                    if (input) input.value = res.value;
+                }
+            }
+        } catch (_e) {}
     }
 
     loadLayoutMode() {
