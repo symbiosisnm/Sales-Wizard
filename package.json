@@ -11,7 +11,8 @@
         "package": "electron-forge package",
         "make": "electron-forge make",
         "publish": "electron-forge publish",
-        "lint": "echo \"No linting configured\""
+        "lint": "echo \"No linting configured\"",
+        "test": "node --test src/utils/__tests__/*.test.js"
     },
     "keywords": [
         "cheating daddy",
@@ -27,12 +28,12 @@
     "license": "GPL-3.0",
     "dependencies": {
         "@google/genai": "^1.2.0",
+        "dotenv": "^16.4.5",
         "electron-squirrel-startup": "^1.0.1",
-        "keytar": "^7.9.0",
         "express": "^4.19.2",
+        "keytar": "^7.9.0",
         "tesseract.js": "^4.0.3",
-        "ws": "^8.16.0",
-        "dotenv": "^16.4.5"
+        "ws": "^8.16.0"
     },
     "devDependencies": {
         "@electron-forge/cli": "^7.8.1",
@@ -45,7 +46,7 @@
         "@electron-forge/plugin-fuses": "^7.8.1",
         "@electron/fuses": "^1.8.0",
         "@reforged/maker-appimage": "^5.0.0",
-        "electron": "^30.0.5",
-        "concurrently": "^8.2.2"
+        "concurrently": "^8.2.2",
+        "electron": "^30.0.5"
     }
 }
