@@ -193,12 +193,36 @@ export class MainView extends LitElement {
         }
     }
 
-    handleInput(e) {
-        localStorage.setItem('apiKey', e.target.value);
+    async handleInput(e) {
+        const value = e.target.value;
+        // Prefer secure store via IPC, fallback to localStorage
+        try {
+            const { ipcRenderer } = window.require?.('electron') || {};
+            if (ipcRenderer) {
+                await ipcRenderer.invoke('secure-set-api-key', value);
+            } else {
+                localStorage.setItem('apiKey', value);
+            }
+        } catch (_e) {
+            localStorage.setItem('apiKey', value);
+        }
         // Clear error state when user starts typing
         if (this.showApiKeyError) {
             this.showApiKeyError = false;
         }
+    }
+
+    async firstUpdated() {
+        try {
+            const { ipcRenderer } = window.require?.('electron') || {};
+            if (ipcRenderer) {
+                const res = await ipcRenderer.invoke('secure-get-api-key');
+                if (res?.success && res.value) {
+                    const input = this.renderRoot?.querySelector('input[type="password"]');
+                    if (input) input.value = res.value;
+                }
+            }
+        } catch (_e) {}
     }
 
     handleStartClick() {
