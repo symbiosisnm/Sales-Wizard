@@ -195,14 +195,14 @@ export class CheatingDaddyApp extends LitElement {
             }
         });
 
-        // Start live streaming of audio and screen to the backend. This
-        // function opens a WebSocket connection and pipes Gemini Live
-        // responses directly into the UI. The returned cleanup
-        // function stops both media capture and closes the socket.
-        startLiveStreaming(response => {
-            if (response) {
-                this.setResponse(response);
-            }
+        // Start live streaming of audio and screen using the new LLMClient
+        // workflow. Responses and status updates feed directly into the UI.
+        startLiveStreaming({
+            onResponse: response => {
+                if (response) this.setResponse(response);
+            },
+            onStatus: status => this.setStatus(status),
+            onError: err => console.error('Live streaming error:', err)
         }).then(stopFn => {
             this._stopLiveStreaming = stopFn;
         }).catch(err => {

@@ -1,20 +1,82 @@
-export async function getAnswer({ transcript = '', ocr = '', clipboard = '' } = {}) {
-  const prompt = 'You are an AI assistant.\n' +
-    'Transcript: ' + transcript + '\n' +
-    'OCR: ' + ocr + '\n' +
-    'Clipboard: ' + clipboard + '\n' +
-    'Provide a concise helpful response.';
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('Missing OpenAI API key');
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: prompt }], max_tokens: 150, temperature: 0.7 })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error('LLM API error: ' + res.status + ' ' + text);
+// Unified LLM client for live interactions over WebSocket.
+// Mirrors the desktop implementation but with browser-friendly defaults.
+
+const DEFAULT_WS = 'ws://localhost:8787/ws/live';
+
+export class LLMClient {
+  /** @type {WebSocket|null} */
+  ws = null;
+  /** @type {(txt:string)=>void} */
+  onText = () => {};
+  /** @type {(s:string)=>void} */
+  onStatus = () => {};
+  /** @type {(e:string)=>void} */
+  onError = () => {};
+  /** @type {(data:string,mime:string)=>void} */
+  onAudio = () => {};
+
+  constructor({ url = DEFAULT_WS } = {}) {
+    this.url = url;
   }
-  const data = await res.json();
-  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content ? data.choices[0].message.content.trim() : '');
+
+  connect({
+    model = 'gemini-2.0-flash-live-001',
+    responseModalities = ['TEXT'],
+    systemInstruction,
+  } = {}) {
+    return new Promise((resolve, reject) => {
+      try {
+        this.ws = new WebSocket(this.url);
+        this.ws.onopen = () => {
+          this._send({
+            type: 'start',
+            model,
+            responseModalities,
+            systemInstruction,
+          });
+          this.onStatus('WS open');
+          resolve(true);
+        };
+        this.ws.onclose = () => this.onStatus('WS closed');
+        this.ws.onerror = (e) => this.onError(`WS error: ${e?.message || String(e)}`);
+        this.ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === 'status') this.onStatus(msg.msg);
+            else if (msg.type === 'error') this.onError(msg.msg);
+            else if (msg.type === 'model_text') this.onText(msg.text);
+            else if (msg.type === 'model_audio') this.onAudio(msg.data, msg.mime);
+          } catch {}
+        };
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  _send(obj) {
+    try {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify(obj));
+      }
+    } catch {}
+  }
+
+  sendText(text) {
+    this._send({ type: 'text', text });
+  }
+
+  sendPcm16Base64(base64, mime = 'audio/pcm;rate=16000') {
+    this._send({ type: 'audio', data: base64, mime });
+  }
+
+  sendJpegBase64(base64, mime = 'image/jpeg') {
+    this._send({ type: 'image', data: base64, mime });
+  }
+
+  end() {
+    this._send({ type: 'end' });
+    try { this.ws?.close(); } catch {}
+  }
 }
+
