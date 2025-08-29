@@ -8,14 +8,8 @@ const sessionManager = require('./sessionManager');
 function setupGeminiIpcHandlers(geminiSessionRef) {
     global.geminiSessionRef = geminiSessionRef;
 
-    ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
-        const session = await sessionManager.initializeGeminiSession(
-            geminiSessionRef,
-            apiKey,
-            customPrompt,
-            profile,
-            language
-        );
+    ipcMain.handle('initialize-gemini', async (apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
+        const session = await sessionManager.initializeGeminiSession(geminiSessionRef, apiKey, customPrompt, profile, language);
         if (session) {
             geminiSessionRef.current = session;
             return true;
@@ -23,9 +17,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return false;
     });
 
-    ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
-        if (!geminiSessionRef.current)
-            return { success: false, error: 'No active Gemini session' };
+    ipcMain.handle('send-audio-content', async ({ data, mimeType }) => {
+        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
             await geminiSessionRef.current.sendRealtimeInput({
                 audio: { data: data, mimeType: mimeType },
@@ -37,15 +30,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('send-image', async (event, data) => {
+    ipcMain.handle('send-image', async data => {
         return sessionManager.sendImage(geminiSessionRef, data);
     });
 
-    ipcMain.handle('send-text-message', async (event, text) => {
+    ipcMain.handle('send-text-message', async text => {
         return sessionManager.sendTextMessage(geminiSessionRef, text);
     });
 
-    ipcMain.handle('start-macos-audio', async event => {
+    ipcMain.handle('start-macos-audio', async () => {
         if (process.platform !== 'darwin') {
             return {
                 success: false,
@@ -61,7 +54,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('stop-macos-audio', async event => {
+    ipcMain.handle('stop-macos-audio', async () => {
         try {
             audioHandler.stopMacOSAudioCapture();
             return { success: true };
@@ -71,7 +64,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('close-session', async event => {
+    ipcMain.handle('close-session', async () => {
         try {
             audioHandler.stopMacOSAudioCapture();
             reconnection.clearSessionParams();
@@ -86,7 +79,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('get-current-session', async event => {
+    ipcMain.handle('get-current-session', async () => {
         try {
             return { success: true, data: conversationStore.getCurrentSessionData() };
         } catch (error) {
@@ -95,7 +88,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('start-new-session', async event => {
+    ipcMain.handle('start-new-session', async () => {
         try {
             const sessionId = conversationStore.initializeNewSession();
             return { success: true, sessionId };
@@ -105,7 +98,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('update-google-search-setting', async (event, enabled) => {
+    ipcMain.handle('update-google-search-setting', async enabled => {
         try {
             console.log('Google Search setting updated to:', enabled);
             return { success: true };
