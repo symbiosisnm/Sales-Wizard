@@ -1,12 +1,12 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
-import { AppHeader } from './AppHeader.js';
-import { MainView } from '../views/MainView.js';
-import { CustomizeView } from '../views/CustomizeView.js';
-import { HelpView } from '../views/HelpView.js';
-import { HistoryView } from '../views/HistoryView.js';
-import { AssistantView } from '../views/AssistantView.js';
-import { OnboardingView } from '../views/OnboardingView.js';
-import { AdvancedView } from '../views/AdvancedView.js';
+import './AppHeader.js';
+import '../views/MainView.js';
+import '../views/CustomizeView.js';
+import '../views/HelpView.js';
+import '../views/HistoryView.js';
+import '../views/AssistantView.js';
+import '../views/OnboardingView.js';
+import '../views/AdvancedView.js';
 
 // Voice assistant helper provides speech recognition via the Web Speech API.
 // It exports a startListening() function that returns a stop function.
@@ -18,7 +18,11 @@ export class CheatingDaddyApp extends LitElement {
     static styles = css`
         * {
             box-sizing: border-box;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family:
+                'Inter',
+                -apple-system,
+                BlinkMacSystemFont,
+                sans-serif;
             margin: 0px;
             padding: 0px;
             cursor: default;
@@ -79,7 +83,9 @@ export class CheatingDaddyApp extends LitElement {
         .view-container {
             opacity: 1;
             transform: translateY(0);
-            transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+            transition:
+                opacity 0.15s ease-out,
+                transform 0.15s ease-out;
             height: 100%;
         }
 
@@ -202,12 +208,14 @@ export class CheatingDaddyApp extends LitElement {
                 if (response) this.setResponse(response);
             },
             onStatus: status => this.setStatus(status),
-            onError: err => console.error('Live streaming error:', err)
-        }).then(stopFn => {
-            this._stopLiveStreaming = stopFn;
-        }).catch(err => {
-            console.error('Failed to start live streaming:', err);
-        });
+            onError: err => console.error('Live streaming error:', err),
+        })
+            .then(stopFn => {
+                this._stopLiveStreaming = stopFn;
+            })
+            .catch(err => {
+                console.error('Failed to start live streaming:', err);
+            });
     }
 
     disconnectedCallback() {
@@ -234,7 +242,7 @@ export class CheatingDaddyApp extends LitElement {
 
     setStatus(text) {
         this.statusText = text;
-        
+
         // Mark response as complete when we get certain status messages
         if (text.includes('Ready') || text.includes('Listening') || text.includes('Error')) {
             this._currentResponseIsComplete = true;
@@ -254,7 +262,9 @@ export class CheatingDaddyApp extends LitElement {
             utter.pitch = 1.0;
             speechSynthesis.cancel();
             speechSynthesis.speak(utter);
-        } catch (_e) {}
+        } catch (_e) {
+            /* empty */
+        }
     }
 
     setResponse(response) {
@@ -471,8 +481,6 @@ export class CheatingDaddyApp extends LitElement {
 
     renderCurrentView() {
         // Only re-render the view if it hasn't been cached or if critical properties changed
-        const viewKey = `${this.currentView}-${this.selectedProfile}-${this.selectedLanguage}`;
-
         switch (this.currentView) {
             case 'onboarding':
                 return html`

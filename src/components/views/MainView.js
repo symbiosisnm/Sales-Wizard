@@ -222,7 +222,9 @@ export class MainView extends LitElement {
                     if (input) input.value = res.value;
                 }
             }
-        } catch (_e) {}
+        } catch (_e) {
+            /* empty */
+        }
     }
 
     handleStartClick() {

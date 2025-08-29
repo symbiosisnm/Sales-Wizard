@@ -716,7 +716,6 @@ export class CustomizeView extends LitElement {
         e.preventDefault();
 
         const modifiers = [];
-        const keys = [];
 
         // Check modifiers
         if (e.ctrlKey) modifiers.push('Ctrl');

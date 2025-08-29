@@ -42,7 +42,9 @@ export class AssistantView extends LitElement {
             opacity: 0;
             filter: blur(10px);
             display: inline-block;
-            transition: opacity 0.5s, filter 0.5s;
+            transition:
+                opacity 0.5s,
+                filter 0.5s;
         }
         .response-container [data-word].visible {
             opacity: 1;
@@ -572,12 +574,15 @@ export class AssistantView extends LitElement {
                 }
                 for (let i = this._lastAnimatedWordCount; i < words.length; i++) {
                     words[i].classList.remove('visible');
-                    setTimeout(() => {
-                        words[i].classList.add('visible');
-                        if (i === words.length - 1) {
-                            this.dispatchEvent(new CustomEvent('response-animation-complete', { bubbles: true, composed: true }));
-                        }
-                    }, (i - this._lastAnimatedWordCount) * 100);
+                    setTimeout(
+                        () => {
+                            words[i].classList.add('visible');
+                            if (i === words.length - 1) {
+                                this.dispatchEvent(new CustomEvent('response-animation-complete', { bubbles: true, composed: true }));
+                            }
+                        },
+                        (i - this._lastAnimatedWordCount) * 100
+                    );
                 }
                 this._lastAnimatedWordCount = words.length;
             } else {
@@ -590,7 +595,6 @@ export class AssistantView extends LitElement {
     }
 
     render() {
-        const currentResponse = this.getCurrentResponse();
         const responseCounter = this.getResponseCounter();
         const isSaved = this.isResponseSaved();
 

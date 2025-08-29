@@ -159,7 +159,7 @@ function getDefaultKeybinds() {
     };
 }
 
-function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef) {
+function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     console.log('Updating global shortcuts with:', keybinds);
 
     // Unregister all existing shortcuts
@@ -248,9 +248,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             globalShortcut.register(keybinds.panicHide, () => {
                 try {
                     if (mainWindow.isVisible()) mainWindow.hide();
-                    mainWindow.webContents
-                        .executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()')
-                        .catch(() => {});
+                    mainWindow.webContents.executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()').catch(() => {});
                 } catch (err) {
                     console.error('Error during panicHide:', err);
                 }
@@ -265,9 +263,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.toggleMic) {
         try {
             globalShortcut.register(keybinds.toggleMic, () => {
-                mainWindow.webContents.executeJavaScript(
-                    'window.dispatchEvent(new CustomEvent("cheddar-toggle-mic"))'
-                );
+                mainWindow.webContents.executeJavaScript('window.dispatchEvent(new CustomEvent("cheddar-toggle-mic"))');
             });
             console.log(`Registered toggleMic: ${keybinds.toggleMic}`);
         } catch (error) {
@@ -352,7 +348,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     }
 }
 
-function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
+function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
     ipcMain.on('view-changed', (event, view) => {
         if (view !== 'assistant' && !mainWindow.isDestroyed()) {
             mainWindow.setIgnoreMouseEvents(false);
@@ -365,13 +361,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         }
     });
 
-    ipcMain.on('update-keybinds', (event, newKeybinds) => {
+    ipcMain.on('update-keybinds', (_event, newKeybinds) => {
         if (!mainWindow.isDestroyed()) {
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer);
         }
     });
 
-    ipcMain.handle('toggle-window-visibility', async event => {
+    ipcMain.handle('toggle-window-visibility', async () => {
         try {
             if (mainWindow.isDestroyed()) {
                 return { success: false, error: 'Window has been destroyed' };

@@ -21,7 +21,6 @@ let screenshotInterval = null;
 let audioContext = null;
 let audioProcessor = null;
 let micAudioProcessor = null;
-let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
 const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
@@ -47,7 +46,9 @@ function startCursorTracking() {
         try {
             const res = await window.electron.ipcRenderer.invoke('get-cursor-point');
             if (res?.success) lastCursorPoint = res;
-        } catch (_e) {}
+        } catch (_e) {
+            /* empty */
+        }
     };
     setInterval(poll, 300);
     poll();
@@ -174,7 +175,9 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
     try {
         const res = await ipcRenderer.invoke('secure-get-api-key');
         if (res?.success && res.value) apiKey = res.value.trim();
-    } catch (_e) {}
+    } catch (_e) {
+        /* empty */
+    }
     if (!apiKey) {
         apiKey = localStorage.getItem('apiKey')?.trim();
     }
@@ -258,13 +261,12 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 });
 
                 console.log('Linux system audio capture via getDisplayMedia succeeded');
-                
+
                 // Setup audio processing for Linux system audio
                 setupLinuxSystemAudioProcessing();
-                
             } catch (systemAudioError) {
                 console.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
-                
+
                 // Fallback to screen-only capture
                 mediaStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
@@ -623,9 +625,9 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
                         if (result.success) {
                             // Track image tokens after successful send
-                    const imageTokens = tokenTracker.calculateImageTokens(drawCanvas.width, drawCanvas.height);
-                    tokenTracker.addTokens(imageTokens, 'image');
-                    console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${drawCanvas.width}x${drawCanvas.height})`);
+                            const imageTokens = tokenTracker.calculateImageTokens(drawCanvas.width, drawCanvas.height);
+                            tokenTracker.addTokens(imageTokens, 'image');
+                            console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${drawCanvas.width}x${drawCanvas.height})`);
                         } else {
                             console.error('Failed to send image:', result.error);
                         }

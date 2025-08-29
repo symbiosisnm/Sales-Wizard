@@ -48,7 +48,7 @@ app.on('activate', () => {
 });
 
 function setupGeneralIpcHandlers() {
-    ipcMain.handle('quit-application', async event => {
+    ipcMain.handle('quit-application', async () => {
         try {
             stopMacOSAudioCapture();
             app.quit();
@@ -59,7 +59,7 @@ function setupGeneralIpcHandlers() {
         }
     });
 
-    ipcMain.handle('open-external', async (event, url) => {
+    ipcMain.handle('open-external', async (_event, url) => {
         try {
             await shell.openExternal(url);
             return { success: true };
@@ -69,16 +69,15 @@ function setupGeneralIpcHandlers() {
         }
     });
 
-    ipcMain.on('update-keybinds', (event, newKeybinds) => {
+    ipcMain.on('update-keybinds', (_event, newKeybinds) => {
         if (mainWindow) {
             updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
         }
     });
 
-    ipcMain.handle('update-content-protection', async (event, contentProtection) => {
+    ipcMain.handle('update-content-protection', async () => {
         try {
             if (mainWindow) {
-
                 // Get content protection setting from localStorage via cheddar
                 const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
                 mainWindow.setContentProtection(contentProtection);
@@ -91,7 +90,7 @@ function setupGeneralIpcHandlers() {
         }
     });
 
-    ipcMain.handle('get-random-display-name', async event => {
+    ipcMain.handle('get-random-display-name', async () => {
         try {
             return randomNames ? randomNames.displayName : 'System Monitor';
         } catch (error) {
