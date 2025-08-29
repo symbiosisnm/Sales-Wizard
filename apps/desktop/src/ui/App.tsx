@@ -49,24 +49,22 @@ export function App() {
   }
 
   async function startMic() {
-    try {
-      if (!audioRef.current) audioRef.current = new AudioCapture({
-        onPcm16Base64: (b64) => client.sendPcm16Base64(b64),
-        onLocalPCM16: async (pcm16) => {
-          if (!s.localAsr) return;
-          try {
-            const text = await transcribePCM16(pcm16);
-            if (text) s.addLog({ kind: 'status', text: `[local ASR] ${text}` });
-          } catch (e:any) {
-            s.addLog({ kind: 'error', text: `local ASR error: ${String(e)}` });
-          }
+    if (!audioRef.current) audioRef.current = new AudioCapture({
+      onPcm16Base64: (b64) => client.sendPcm16Base64(b64),
+      onLocalPCM16: async (pcm16) => {
+        if (!s.localAsr) return;
+        try {
+          const text = await transcribePCM16(pcm16);
+          if (text) s.addLog({ kind: 'status', text: `[local ASR] ${text}` });
+        } catch (e:any) {
+          s.addLog({ kind: 'error', text: `local ASR error: ${String(e)}` });
         }
-      });
-      await audioRef.current.start();
+      },
+      onError: (e) => s.addLog({ kind: 'error', text: `Mic error: ${String(e)}` }),
+    });
+    await audioRef.current.start().then(() => {
       s.addLog({ kind: 'status', text: 'Mic started' });
-    } catch (err: any) {
-      s.addLog({ kind: 'error', text: `Mic error: ${String(err)}` });
-    }
+    }).catch(() => {});
   }
 
   async function stopMic() {
@@ -76,25 +74,23 @@ export function App() {
   }
 
   async function shareScreen() {
-    try {
-      if (!screenRef.current) screenRef.current = new ScreenCapture({
-        fps: s.screenFrameFps,
-        onJpegBase64: (b64) => client.sendJpegBase64(b64),
-        onLocalJpegBytes: async (bytes) => {
-          if (!s.localOcr) return;
-          try {
-            const text = await ocrBytes(bytes);
-            if (text) s.addLog({ kind: 'status', text: `[local OCR] ${text.slice(0,200)}${text.length>200?'…':''}` });
-          } catch (e:any) {
-            s.addLog({ kind: 'error', text: `local OCR error: ${String(e)}` });
-          }
+    if (!screenRef.current) screenRef.current = new ScreenCapture({
+      fps: s.screenFrameFps,
+      onJpegBase64: (b64) => client.sendJpegBase64(b64),
+      onLocalJpegBytes: async (bytes) => {
+        if (!s.localOcr) return;
+        try {
+          const text = await ocrBytes(bytes);
+          if (text) s.addLog({ kind: 'status', text: `[local OCR] ${text.slice(0,200)}${text.length>200?'…':''}` });
+        } catch (e:any) {
+          s.addLog({ kind: 'error', text: `local OCR error: ${String(e)}` });
         }
-      });
-      await screenRef.current.start();
+      },
+      onError: (e) => s.addLog({ kind: 'error', text: `Screen error: ${String(e)}` }),
+    });
+    await screenRef.current.start().then(() => {
       s.addLog({ kind: 'status', text: 'Screen sharing started' });
-    } catch (err: any) {
-      s.addLog({ kind: 'error', text: `Screen error: ${String(err)}` });
-    }
+    }).catch(() => {});
   }
 
   async function stopScreen() {
