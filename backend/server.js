@@ -1,10 +1,11 @@
+require('dotenv').config();
 const express = require('express');
-const { GoogleGenerativeAI, Modality } = require('@google/genai');
+const { GoogleGenAI, Modality } = require('@google/genai');
 const { WebSocketServer } = require('ws');
 
 const app = express();
 app.use(express.json());
-const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 app.post('/ask', async (req, res) => {
   const prompt = req.body.prompt || '';

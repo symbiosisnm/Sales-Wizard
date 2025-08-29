@@ -22,8 +22,9 @@ A real-time AI assistant that provides contextual help during video calls, inter
 ## Setup
 
 1. **Get a Gemini API Key**: Visit [Google AI Studio](https://aistudio.google.com/apikey)
-2. **Install Dependencies**: `npm install`
-3. **Run the App**: `npm start`
+2. **Copy the Example Environment File**: `cp .env.example .env` and add your `GEMINI_API_KEY`
+3. **Install Dependencies**: `npm install`
+4. **Run the App**: `npm start` (starts backend and desktop client)
 
 ## Usage
 
