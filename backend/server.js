@@ -50,3 +50,5 @@ wss.on('connection', async (ws) => {
 
   ws.on('close', () => session.close());
 });
+
+module.exports = { app, server, wss };
