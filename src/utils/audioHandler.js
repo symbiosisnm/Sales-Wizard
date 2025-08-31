@@ -2,7 +2,6 @@ const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 
 let systemAudioProc = null;
-let vadPrevEnergy = 0;
 let vadSpeaking = false;
 let vadLastSendTs = 0;
 const VAD_THRESHOLD = 900;
@@ -120,13 +119,10 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
         const keepAlive = !vadSpeaking && now - vadLastSendTs > VAD_SILENCE_SEND_MS;
         if (enteringSpeech || stayingSpeech || keepAlive) {
             vadSpeaking = enteringSpeech || stayingSpeech;
-            vadPrevEnergy = energy;
             vadLastSendTs = now;
             await geminiSessionRef.current.sendRealtimeInput({
                 audio: { data: base64Data, mimeType: 'audio/pcm;rate=24000' },
             });
-        } else {
-            vadPrevEnergy = energy;
         }
     } catch (error) {
         console.error('Error sending audio to Gemini:', error);

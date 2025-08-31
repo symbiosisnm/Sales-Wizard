@@ -1,54 +1,58 @@
 {
-    "name": "cheating-daddy",
-    "productName": "cheating-daddy",
-    "version": "0.4.0",
-    "description": "cheating daddy",
-    "main": "src/index.js",
-    "scripts": {
-        "start": "concurrently \"npm run start:backend\" \"npm run start:electron\"",
-        "start:electron": "electron-forge start",
-        "start:backend": "node backend/server.js",
-        "package": "electron-forge package",
-        "make": "electron-forge make",
-        "publish": "electron-forge publish",
-        "lint": "echo \"No linting configured\"",
-        "test": "node --test backend/__tests__ src/components/__tests__ src/utils/__tests__"
-    },
-    "keywords": [
-        "cheating daddy",
-        "cheating daddy ai",
-        "cheating daddy ai assistant",
-        "cheating daddy ai assistant for interviews",
-        "cheating daddy ai assistant for interviews"
-    ],
-    "author": {
-        "name": "sohzm",
-        "email": "sohambharambe9@gmail.com"
-    },
-    "license": "GPL-3.0",
-    "dependencies": {
-        "@google/genai": "^1.2.0",
-        "dotenv": "^16.4.5",
-        "electron-squirrel-startup": "^1.0.1",
-        "express": "^4.19.2",
-        "keytar": "^7.9.0",
-        "tesseract.js": "^4.0.3",
-        "ws": "^8.16.0"
-    },
-    "devDependencies": {
-        "@electron-forge/cli": "^7.8.1",
-        "@electron-forge/maker-deb": "^7.8.1",
-        "@electron-forge/maker-dmg": "^7.8.1",
-        "@electron-forge/maker-rpm": "^7.8.1",
-        "@electron-forge/maker-squirrel": "^7.8.1",
-        "@electron-forge/maker-zip": "^7.8.1",
-        "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
-        "@electron-forge/plugin-fuses": "^7.8.1",
-        "@electron/fuses": "^1.8.0",
-        "@reforged/maker-appimage": "^5.0.0",
-        "concurrently": "^8.2.2",
-        "electron": "^30.0.5",
-        "jsdom": "^26.1.0",
-        "supertest": "^7.1.4"
-    }
+  "name": "cheating-daddy",
+  "productName": "cheating-daddy",
+  "version": "0.4.0",
+  "description": "cheating daddy",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "concurrently \"npm run start:backend\" \"npm run start:electron\"",
+    "start:electron": "electron-forge start",
+    "start:backend": "node backend/server.js",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint .",
+    "test": "node --test backend/__tests__ src/components/__tests__ src/utils/__tests__",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "cheating daddy",
+    "cheating daddy ai",
+    "cheating daddy ai assistant",
+    "cheating daddy ai assistant for interviews",
+    "cheating daddy ai assistant for interviews"
+  ],
+  "author": {
+    "name": "sohzm",
+    "email": "sohambharambe9@gmail.com"
+  },
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@google/genai": "^1.2.0",
+    "dotenv": "^16.4.5",
+    "electron-squirrel-startup": "^1.0.1",
+    "express": "^4.19.2",
+    "keytar": "^7.9.0",
+    "tesseract.js": "^4.0.3",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.1",
+    "@electron-forge/maker-deb": "^7.8.1",
+    "@electron-forge/maker-dmg": "^7.8.1",
+    "@electron-forge/maker-rpm": "^7.8.1",
+    "@electron-forge/maker-squirrel": "^7.8.1",
+    "@electron-forge/maker-zip": "^7.8.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
+    "@electron-forge/plugin-fuses": "^7.8.1",
+    "@electron/fuses": "^1.8.0",
+    "@reforged/maker-appimage": "^5.0.0",
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.5",
+    "eslint": "^8.57.1",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.6.2",
+    "supertest": "^7.1.4"
+  }
 }
+
