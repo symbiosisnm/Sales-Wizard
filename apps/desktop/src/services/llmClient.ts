@@ -55,13 +55,42 @@ export class LLMClient {
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(this.url);
+        let opened = false;
+        const timeout = setTimeout(() => {
+          if (!opened) {
+            const msg = 'WS open timeout';
+            this.onError(msg);
+            try {
+              this.ws?.close();
+            } catch {}
+            reject(new Error(msg));
+          }
+        }, 10_000);
+
         this.ws.onopen = () => {
+          opened = true;
+          clearTimeout(timeout);
           this._send({ type: 'start', model, responseModalities, systemInstruction });
           this.onStatus('WS open');
           resolve(true);
         };
-        this.ws.onclose = () => this.onStatus('WS closed');
-        this.ws.onerror = (e: any) => this.onError(`WS error: ${e?.message || String(e)}`);
+        this.ws.onclose = () => {
+          this.onStatus('WS closed');
+          if (!opened) {
+            clearTimeout(timeout);
+            const msg = 'WS closed before open';
+            this.onError(msg);
+            reject(new Error(msg));
+          }
+        };
+        this.ws.onerror = (e: any) => {
+          const msg = `WS error: ${e?.message || String(e)}`;
+          this.onError(msg);
+          if (!opened) {
+            clearTimeout(timeout);
+            reject(new Error(msg));
+          }
+        };
         this.ws.onmessage = (evt: MessageEvent<string>) => {
           try {
             const msg: IncomingMessage = JSON.parse(evt.data);
