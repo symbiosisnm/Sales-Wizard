@@ -24,6 +24,7 @@ let micAudioProcessor = null;
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
 const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
+const PCM_WORKLET_URL = 'utils/pcm16-worklet.js';
 
 let hiddenVideo = null;
 let offscreenCanvas = null;
@@ -170,6 +171,27 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary);
 }
 
+async function createPcmWorkletNode(ctx, onChunk) {
+    if (!ctx.audioWorklet) {
+        console.warn('AudioWorklet not supported, falling back to ScriptProcessor');
+        return null;
+    }
+    try {
+        await ctx.audioWorklet.addModule(PCM_WORKLET_URL);
+        const node = new AudioWorkletNode(ctx, 'pcm16-worklet', {
+            processorOptions: {
+                targetSampleRate: SAMPLE_RATE,
+                samplesPerChunk: SAMPLE_RATE * AUDIO_CHUNK_DURATION,
+            },
+        });
+        node.port.onmessage = e => onChunk(e.data);
+        return node;
+    } catch (err) {
+        console.warn('Failed to initialise AudioWorklet:', err);
+        return null;
+    }
+}
+
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     let apiKey = null;
     try {
@@ -263,7 +285,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 logger.info('Linux system audio capture via getDisplayMedia succeeded');
 
                 // Setup audio processing for Linux system audio
-                setupLinuxSystemAudioProcessing();
+                await setupLinuxSystemAudioProcessing();
             } catch (systemAudioError) {
                 logger.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
 
@@ -295,7 +317,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 logger.info('Linux microphone capture started');
 
                 // Setup audio processing for microphone on Linux
-                setupLinuxMicProcessing(micStream);
+                await setupLinuxMicProcessing(micStream);
             } catch (micError) {
                 logger.warn('Failed to get microphone access on Linux:', micError);
                 // Continue without microphone if permission denied
@@ -322,7 +344,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             logger.info('Windows capture started with loopback audio');
 
             // Setup audio processing for Windows loopback audio only
-            setupWindowsLoopbackProcessing();
+            await setupWindowsLoopbackProcessing();
         }
 
         logger.info('MediaStream obtained:', {
@@ -348,12 +370,28 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 }
 
-function setupLinuxMicProcessing(micStream) {
+async function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux
     const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const micSource = micAudioContext.createMediaStreamSource(micStream);
-    const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
+    const workletNode = await createPcmWorkletNode(micAudioContext, async bytes => {
+        const base64Data = arrayBufferToBase64(bytes.buffer);
+        await ipcRenderer.invoke('send-audio-content', {
+            data: base64Data,
+            mimeType: 'audio/pcm;rate=24000',
+        });
+    });
+
+    if (workletNode) {
+        micSource.connect(workletNode);
+        workletNode.connect(micAudioContext.destination);
+        micAudioProcessor = workletNode;
+        return;
+    }
+
+    // Fallback to ScriptProcessor when AudioWorklet unavailable
+    const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
     let audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
@@ -361,7 +399,6 @@ function setupLinuxMicProcessing(micStream) {
         const inputData = e.inputBuffer.getChannelData(0);
         audioBuffer.push(...inputData);
 
-        // Process audio in chunks
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
@@ -376,17 +413,31 @@ function setupLinuxMicProcessing(micStream) {
 
     micSource.connect(micProcessor);
     micProcessor.connect(micAudioContext.destination);
-
-    // Store processor reference for cleanup
     micAudioProcessor = micProcessor;
 }
 
-function setupLinuxSystemAudioProcessing() {
+async function setupLinuxSystemAudioProcessing() {
     // Setup system audio processing for Linux (from getDisplayMedia)
     audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
+    const node = await createPcmWorkletNode(audioContext, async bytes => {
+        const base64Data = arrayBufferToBase64(bytes.buffer);
+        await ipcRenderer.invoke('send-audio-content', {
+            data: base64Data,
+            mimeType: 'audio/pcm;rate=24000',
+        });
+    });
+
+    if (node) {
+        source.connect(node);
+        node.connect(audioContext.destination);
+        audioProcessor = node;
+        return;
+    }
+
+    // Fallback to ScriptProcessor
+    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
     let audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
@@ -394,7 +445,6 @@ function setupLinuxSystemAudioProcessing() {
         const inputData = e.inputBuffer.getChannelData(0);
         audioBuffer.push(...inputData);
 
-        // Process audio in chunks
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
@@ -411,12 +461,28 @@ function setupLinuxSystemAudioProcessing() {
     audioProcessor.connect(audioContext.destination);
 }
 
-function setupWindowsLoopbackProcessing() {
+async function setupWindowsLoopbackProcessing() {
     // Setup audio processing for Windows loopback audio only
     audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
+    const node = await createPcmWorkletNode(audioContext, async bytes => {
+        const base64Data = arrayBufferToBase64(bytes.buffer);
+        await ipcRenderer.invoke('send-audio-content', {
+            data: base64Data,
+            mimeType: 'audio/pcm;rate=24000',
+        });
+    });
+
+    if (node) {
+        source.connect(node);
+        node.connect(audioContext.destination);
+        audioProcessor = node;
+        return;
+    }
+
+    // Fallback to ScriptProcessor
+    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
     let audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
@@ -424,7 +490,6 @@ function setupWindowsLoopbackProcessing() {
         const inputData = e.inputBuffer.getChannelData(0);
         audioBuffer.push(...inputData);
 
-        // Process audio in chunks
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
@@ -457,24 +522,38 @@ async function enableMicStreaming() {
         });
         pttMicContext = new AudioContext({ sampleRate: SAMPLE_RATE });
         const src = pttMicContext.createMediaStreamSource(stream);
-        const proc = pttMicContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-        let micBuf = [];
-        const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-        proc.onaudioprocess = async e => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            micBuf.push(...inputData);
-            while (micBuf.length >= samplesPerChunk) {
-                const chunk = micBuf.splice(0, samplesPerChunk);
-                const pcm16 = convertFloat32ToInt16(chunk);
-                const base64Data = arrayBufferToBase64(pcm16.buffer);
-                await ipcRenderer.invoke('send-audio-content', {
-                    data: base64Data,
-                    mimeType: 'audio/pcm;rate=24000',
-                });
-            }
-        };
-        src.connect(proc);
-        proc.connect(pttMicContext.destination);
+
+        const node = await createPcmWorkletNode(pttMicContext, async bytes => {
+            const base64Data = arrayBufferToBase64(bytes.buffer);
+            await ipcRenderer.invoke('send-audio-content', {
+                data: base64Data,
+                mimeType: 'audio/pcm;rate=24000',
+            });
+        });
+
+        if (node) {
+            src.connect(node);
+            node.connect(pttMicContext.destination);
+        } else {
+            const proc = pttMicContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+            let micBuf = [];
+            const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
+            proc.onaudioprocess = async e => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                micBuf.push(...inputData);
+                while (micBuf.length >= samplesPerChunk) {
+                    const chunk = micBuf.splice(0, samplesPerChunk);
+                    const pcm16 = convertFloat32ToInt16(chunk);
+                    const base64Data = arrayBufferToBase64(pcm16.buffer);
+                    await ipcRenderer.invoke('send-audio-content', {
+                        data: base64Data,
+                        mimeType: 'audio/pcm;rate=24000',
+                    });
+                }
+            };
+            src.connect(proc);
+            proc.connect(pttMicContext.destination);
+        }
         pttMicStream = stream;
         micEnabled = true;
         logger.info('Microphone streaming enabled');
