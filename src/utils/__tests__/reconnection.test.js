@@ -1,7 +1,13 @@
 const { test, beforeEach, mock } = require('node:test');
 const assert = require('node:assert');
-const reconnection = require('../reconnection');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cd-reconnect-'));
+process.env.APP_DATA_DIR = tmpDir;
 const conversationStore = require('../conversationStore');
+const reconnection = require('../reconnection');
 
 beforeEach(() => {
     reconnection.clearSessionParams();

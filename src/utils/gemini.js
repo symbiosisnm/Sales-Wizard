@@ -98,6 +98,25 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    ipcMain.handle('export-conversation-history', async () => {
+        try {
+            return { success: true, data: conversationStore.exportConversationHistory() };
+        } catch (error) {
+            console.error('Error exporting conversation history:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('clear-conversation-history', async () => {
+        try {
+            conversationStore.clearConversationHistory();
+            return { success: true };
+        } catch (error) {
+            console.error('Error clearing conversation history:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('update-google-search-setting', async enabled => {
         try {
             console.log('Google Search setting updated to:', enabled);
@@ -119,6 +138,8 @@ module.exports = {
     initializeNewSession: conversationStore.initializeNewSession,
     saveConversationTurn: conversationStore.saveConversationTurn,
     getCurrentSessionData: conversationStore.getCurrentSessionData,
+    exportConversationHistory: conversationStore.exportConversationHistory,
+    clearConversationHistory: conversationStore.clearConversationHistory,
     sendReconnectionContext: reconnection.sendReconnectionContext,
     killExistingSystemAudioDump: audioHandler.killExistingSystemAudioDump,
     startMacOSAudioCapture: audioHandler.startMacOSAudioCapture,
