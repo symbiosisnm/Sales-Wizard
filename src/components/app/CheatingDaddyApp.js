@@ -197,7 +197,7 @@ export class CheatingDaddyApp extends LitElement {
                     this.setResponse(data.reply);
                 }
             } catch (err) {
-                console.error('Voice assistant fetch failed:', err);
+                logger.error('Voice assistant fetch failed:', err);
             }
         });
 
@@ -208,13 +208,13 @@ export class CheatingDaddyApp extends LitElement {
                 if (response) this.setResponse(response);
             },
             onStatus: status => this.setStatus(status),
-            onError: err => console.error('Live streaming error:', err),
+            onError: err => logger.error('Live streaming error:', err),
         })
             .then(stopFn => {
                 this._stopLiveStreaming = stopFn;
             })
             .catch(err => {
-                console.error('Failed to start live streaming:', err);
+                logger.error('Failed to start live streaming:', err);
             });
     }
 
@@ -246,7 +246,7 @@ export class CheatingDaddyApp extends LitElement {
         // Mark response as complete when we get certain status messages
         if (text.includes('Ready') || text.includes('Listening') || text.includes('Error')) {
             this._currentResponseIsComplete = true;
-            console.log('[setStatus] Marked current response as complete');
+            logger.info('[setStatus] Marked current response as complete');
             const last = this.responses?.length ? this.responses[this.responses.length - 1] : null;
             if (last) this.maybeSpeak(last);
         }
@@ -283,18 +283,18 @@ export class CheatingDaddyApp extends LitElement {
             this.currentResponseIndex = this.responses.length - 1;
             this._awaitingNewResponse = false;
             this._currentResponseIsComplete = false;
-            console.log('[setResponse] Pushed new response:', response);
+            logger.info('[setResponse] Pushed new response:', response);
         } else if (!this._currentResponseIsComplete && !isFillerResponse && this.responses.length > 0) {
             // For substantial responses, update the last one (streaming behavior)
             // Only update if the current response is not marked as complete
             this.responses = [...this.responses.slice(0, this.responses.length - 1), response];
-            console.log('[setResponse] Updated last response:', response);
+            logger.info('[setResponse] Updated last response:', response);
         } else {
             // For filler responses or when current response is complete, add as new
             this.responses = [...this.responses, response];
             this.currentResponseIndex = this.responses.length - 1;
             this._currentResponseIsComplete = false;
-            console.log('[setResponse] Added response as new:', response);
+            logger.info('[setResponse] Added response as new:', response);
         }
         this.shouldAnimateResponse = true;
         this.requestUpdate();
@@ -334,7 +334,7 @@ export class CheatingDaddyApp extends LitElement {
             }
             this.sessionActive = false;
             this.currentView = 'main';
-            console.log('Session closed');
+            logger.info('Session closed');
         } else {
             // Quit the entire application
             if (window.electron?.ipcRenderer) {
@@ -421,7 +421,7 @@ export class CheatingDaddyApp extends LitElement {
         const result = await window.cheddar.sendTextMessage(message);
 
         if (!result.success) {
-            console.error('Failed to send message:', result.error);
+            logger.error('Failed to send message:', result.error);
             this.setStatus('Error sending message: ' + result.error);
         } else {
             this.setStatus('Message sent...');
@@ -535,7 +535,7 @@ export class CheatingDaddyApp extends LitElement {
                         @response-animation-complete=${() => {
                             this.shouldAnimateResponse = false;
                             this._currentResponseIsComplete = true;
-                            console.log('[response-animation-complete] Marked current response as complete');
+                            logger.info('[response-animation-complete] Marked current response as complete');
                             this.requestUpdate();
                         }}
                     ></assistant-view>
@@ -596,7 +596,7 @@ export class CheatingDaddyApp extends LitElement {
                 const { ipcRenderer } = window.electron;
                 await ipcRenderer.invoke('update-sizes');
             } catch (error) {
-                console.error('Failed to update sizes in main process:', error);
+                logger.error('Failed to update sizes in main process:', error);
             }
         }
 

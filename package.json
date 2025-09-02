@@ -12,7 +12,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint .",
-    "test": "node --test src/utils/__tests__/*.test.js",
+    "test": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
     "format": "prettier --write ."
   },
   "keywords": [

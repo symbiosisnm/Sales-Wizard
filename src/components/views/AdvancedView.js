@@ -376,7 +376,7 @@ export class AdvancedView extends LitElement {
                     deleteReq.onsuccess = () => resolve();
                     deleteReq.onerror = () => reject(deleteReq.error);
                     deleteReq.onblocked = () => {
-                        console.warn(`Deletion of database ${db.name} was blocked`);
+                        logger.warn(`Deletion of database ${db.name} was blocked`);
                         resolve(); // Continue anyway
                     };
                 });
@@ -406,7 +406,7 @@ export class AdvancedView extends LitElement {
                 }, 1000);
             }, 2000);
         } catch (error) {
-            console.error('Error clearing data:', error);
+            logger.error('Error clearing data:', error);
             this.statusMessage = `❌ Error clearing data: ${error.message}`;
             this.statusType = 'error';
         } finally {
@@ -482,7 +482,7 @@ export class AdvancedView extends LitElement {
             try {
                 await ipcRenderer.invoke('update-content-protection', this.contentProtection);
             } catch (error) {
-                console.error('Failed to update content protection:', error);
+                logger.error('Failed to update content protection:', error);
             }
         }
         

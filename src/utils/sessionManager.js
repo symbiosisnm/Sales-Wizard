@@ -29,7 +29,7 @@ async function getStoredSetting(key, defaultValue) {
             return value;
         }
     } catch (error) {
-        console.error('Error getting stored setting for', key, ':', error.message);
+        logger.error('Error getting stored setting for', key, ':', error.message);
     }
     return defaultValue;
 }
@@ -55,7 +55,7 @@ async function initializeGeminiSession(
     isReconnection = false
 ) {
     if (isInitializingSession) {
-        console.log('Session initialization already in progress');
+        logger.info('Session initialization already in progress');
         return false;
     }
 
@@ -148,7 +148,7 @@ async function initializeGeminiSession(
         sendToRenderer('session-initializing', false);
         return session;
     } catch (error) {
-        console.error('Failed to initialize Gemini session:', error);
+        logger.error('Failed to initialize Gemini session:', error);
         isInitializingSession = false;
         sendToRenderer('session-initializing', false);
         return null;

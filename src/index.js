@@ -1,6 +1,7 @@
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
+require("./utils/logger");
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
@@ -54,7 +55,7 @@ function setupGeneralIpcHandlers() {
             app.quit();
             return { success: true };
         } catch (error) {
-            console.error('Error quitting application:', error);
+            logger.error('Error quitting application:', error);
             return { success: false, error: error.message };
         }
     });
@@ -64,7 +65,7 @@ function setupGeneralIpcHandlers() {
             await shell.openExternal(url);
             return { success: true };
         } catch (error) {
-            console.error('Error opening external URL:', error);
+            logger.error('Error opening external URL:', error);
             return { success: false, error: error.message };
         }
     });
@@ -81,11 +82,11 @@ function setupGeneralIpcHandlers() {
                 // Get content protection setting from localStorage via cheddar
                 const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
                 mainWindow.setContentProtection(contentProtection);
-                console.log('Content protection updated:', contentProtection);
+                logger.info('Content protection updated:', contentProtection);
             }
             return { success: true };
         } catch (error) {
-            console.error('Error updating content protection:', error);
+            logger.error('Error updating content protection:', error);
             return { success: false, error: error.message };
         }
     });
@@ -94,7 +95,7 @@ function setupGeneralIpcHandlers() {
         try {
             return randomNames ? randomNames.displayName : 'System Monitor';
         } catch (error) {
-            console.error('Error getting random display name:', error);
+            logger.error('Error getting random display name:', error);
             return 'System Monitor';
         }
     });

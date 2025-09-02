@@ -116,7 +116,7 @@ export async function transcribeAudio() {
       setTimeout(() => recorder.stop(), 5000);
     });
   } catch (err) {
-    console.error('Transcription failed:', err);
+    logger.error('Transcription failed:', err);
     return '';
   }
 }

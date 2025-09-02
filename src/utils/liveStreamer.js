@@ -46,7 +46,7 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
       audioCtx.close();
     };
   } catch (err) {
-    console.warn('Audio streaming failed to initialise:', err);
+    logger.warn('Audio streaming failed to initialise:', err);
   }
 
   // Screen capture
@@ -63,11 +63,11 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
         const base64 = btoa(binary);
         client.sendJpegBase64(base64, blob.type || 'image/jpeg');
       } catch (err) {
-        console.warn('Error capturing screen frame:', err);
+        logger.warn('Error capturing screen frame:', err);
       }
     }, 1000);
   } catch (err) {
-    console.warn('Screen streaming failed to initialise:', err);
+    logger.warn('Screen streaming failed to initialise:', err);
   }
 
   return () => {

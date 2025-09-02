@@ -23,7 +23,7 @@ export async function ocrBase64(base64) {
 
     return (text || '').trim();
   } catch (error) {
-    console.error('OCR error:', error);
+    logger.error('OCR error:', error);
     throw new Error('OCR failed: ' + error.message);
   }
 }

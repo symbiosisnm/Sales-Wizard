@@ -65,13 +65,13 @@ function analyzeAudioBuffer(buffer, label = 'Audio') {
 
     const silencePercentage = (silentSamples / int16Array.length) * 100;
 
-    console.log(`${label} Analysis:`);
-    console.log(`  Samples: ${int16Array.length}`);
-    console.log(`  Min: ${minValue}, Max: ${maxValue}`);
-    console.log(`  Average: ${avgValue.toFixed(2)}`);
-    console.log(`  RMS: ${rmsValue.toFixed(2)}`);
-    console.log(`  Silence: ${silencePercentage.toFixed(1)}%`);
-    console.log(`  Dynamic Range: ${20 * Math.log10(maxValue / (rmsValue || 1))} dB`);
+    logger.info(`${label} Analysis:`);
+    logger.info(`  Samples: ${int16Array.length}`);
+    logger.info(`  Min: ${minValue}, Max: ${maxValue}`);
+    logger.info(`  Average: ${avgValue.toFixed(2)}`);
+    logger.info(`  RMS: ${rmsValue.toFixed(2)}`);
+    logger.info(`  Silence: ${silencePercentage.toFixed(1)}%`);
+    logger.info(`  Dynamic Range: ${20 * Math.log10(maxValue / (rmsValue || 1))} dB`);
 
     return {
         minValue,
@@ -123,7 +123,7 @@ function saveDebugAudio(buffer, type, timestamp = Date.now()) {
         )
     );
 
-    console.log(`Debug audio saved: ${wavPath}`);
+    logger.info(`Debug audio saved: ${wavPath}`);
 
     return { pcmPath, wavPath, metaPath };
 }

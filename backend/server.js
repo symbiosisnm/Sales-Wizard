@@ -1,4 +1,5 @@
 require('dotenv').config();
+require("../src/utils/logger");
 const express = require('express');
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { WebSocketServer } = require('ws');
@@ -15,7 +16,7 @@ app.post('/ask', async (req, res) => {
     const reply = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     res.json({ reply });
   } catch (err) {
-    console.error('Error:', err);
+    logger.error('Error:', err);
     res.status(500).json({ error: 'Generation failed' });
   }
 });

@@ -81,7 +81,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     // Set window title to random name if provided
     if (randomNames && randomNames.windowTitle) {
         mainWindow.setTitle(randomNames.windowTitle);
-        console.log(`Set window title to: ${randomNames.windowTitle}`);
+        logger.info(`Set window title to: ${randomNames.windowTitle}`);
     }
 
     // Apply stealth measures
@@ -119,9 +119,9 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                     try {
                         const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
                         mainWindow.setContentProtection(contentProtection);
-                        console.log('Content protection loaded from settings:', contentProtection);
+                        logger.info('Content protection loaded from settings:', contentProtection);
                     } catch (error) {
-                        console.error('Error loading content protection:', error);
+                        logger.error('Error loading content protection:', error);
                         mainWindow.setContentProtection(true);
                     }
 
@@ -160,7 +160,7 @@ function getDefaultKeybinds() {
 }
 
 function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
-    console.log('Updating global shortcuts with:', keybinds);
+    logger.info('Updating global shortcuts with:', keybinds);
 
     // Unregister all existing shortcuts
     globalShortcut.unregisterAll();
@@ -199,9 +199,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
         if (keybind) {
             try {
                 globalShortcut.register(keybind, movementActions[action]);
-                console.log(`Registered ${action}: ${keybind}`);
+                logger.info(`Registered ${action}: ${keybind}`);
             } catch (error) {
-                console.error(`Failed to register ${action} (${keybind}):`, error);
+                logger.error(`Failed to register ${action} (${keybind}):`, error);
             }
         }
     });
@@ -216,9 +216,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
                     mainWindow.showInactive();
                 }
             });
-            console.log(`Registered toggleVisibility: ${keybinds.toggleVisibility}`);
+            logger.info(`Registered toggleVisibility: ${keybinds.toggleVisibility}`);
         } catch (error) {
-            console.error(`Failed to register toggleVisibility (${keybinds.toggleVisibility}):`, error);
+            logger.error(`Failed to register toggleVisibility (${keybinds.toggleVisibility}):`, error);
         }
     }
 
@@ -229,16 +229,16 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
                 mouseEventsIgnored = !mouseEventsIgnored;
                 if (mouseEventsIgnored) {
                     mainWindow.setIgnoreMouseEvents(true, { forward: true });
-                    console.log('Mouse events ignored');
+                    logger.info('Mouse events ignored');
                 } else {
                     mainWindow.setIgnoreMouseEvents(false);
-                    console.log('Mouse events enabled');
+                    logger.info('Mouse events enabled');
                 }
                 mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
             });
-            console.log(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
+            logger.info(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
         } catch (error) {
-            console.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
+            logger.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
         }
     }
 
@@ -250,12 +250,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
                     if (mainWindow.isVisible()) mainWindow.hide();
                     mainWindow.webContents.executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()').catch(() => {});
                 } catch (err) {
-                    console.error('Error during panicHide:', err);
+                    logger.error('Error during panicHide:', err);
                 }
             });
-            console.log(`Registered panicHide: ${keybinds.panicHide}`);
+            logger.info(`Registered panicHide: ${keybinds.panicHide}`);
         } catch (error) {
-            console.error(`Failed to register panicHide (${keybinds.panicHide}):`, error);
+            logger.error(`Failed to register panicHide (${keybinds.panicHide}):`, error);
         }
     }
 
@@ -265,9 +265,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
             globalShortcut.register(keybinds.toggleMic, () => {
                 mainWindow.webContents.executeJavaScript('window.dispatchEvent(new CustomEvent("cheddar-toggle-mic"))');
             });
-            console.log(`Registered toggleMic: ${keybinds.toggleMic}`);
+            logger.info(`Registered toggleMic: ${keybinds.toggleMic}`);
         } catch (error) {
-            console.error(`Failed to register toggleMic (${keybinds.toggleMic}):`, error);
+            logger.error(`Failed to register toggleMic (${keybinds.toggleMic}):`, error);
         }
     }
 
@@ -275,7 +275,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.nextStep) {
         try {
             globalShortcut.register(keybinds.nextStep, async () => {
-                console.log('Next step shortcut triggered');
+                logger.info('Next step shortcut triggered');
                 try {
                     // Determine the shortcut key format
                     const isMac = process.platform === 'darwin';
@@ -286,12 +286,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
                         cheddar.handleShortcut('${shortcutKey}');
                     `);
                 } catch (error) {
-                    console.error('Error handling next step shortcut:', error);
+                    logger.error('Error handling next step shortcut:', error);
                 }
             });
-            console.log(`Registered nextStep: ${keybinds.nextStep}`);
+            logger.info(`Registered nextStep: ${keybinds.nextStep}`);
         } catch (error) {
-            console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
+            logger.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
         }
     }
 
@@ -299,12 +299,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.previousResponse) {
         try {
             globalShortcut.register(keybinds.previousResponse, () => {
-                console.log('Previous response shortcut triggered');
+                logger.info('Previous response shortcut triggered');
                 sendToRenderer('navigate-previous-response');
             });
-            console.log(`Registered previousResponse: ${keybinds.previousResponse}`);
+            logger.info(`Registered previousResponse: ${keybinds.previousResponse}`);
         } catch (error) {
-            console.error(`Failed to register previousResponse (${keybinds.previousResponse}):`, error);
+            logger.error(`Failed to register previousResponse (${keybinds.previousResponse}):`, error);
         }
     }
 
@@ -312,12 +312,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.nextResponse) {
         try {
             globalShortcut.register(keybinds.nextResponse, () => {
-                console.log('Next response shortcut triggered');
+                logger.info('Next response shortcut triggered');
                 sendToRenderer('navigate-next-response');
             });
-            console.log(`Registered nextResponse: ${keybinds.nextResponse}`);
+            logger.info(`Registered nextResponse: ${keybinds.nextResponse}`);
         } catch (error) {
-            console.error(`Failed to register nextResponse (${keybinds.nextResponse}):`, error);
+            logger.error(`Failed to register nextResponse (${keybinds.nextResponse}):`, error);
         }
     }
 
@@ -325,12 +325,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.scrollUp) {
         try {
             globalShortcut.register(keybinds.scrollUp, () => {
-                console.log('Scroll up shortcut triggered');
+                logger.info('Scroll up shortcut triggered');
                 sendToRenderer('scroll-response-up');
             });
-            console.log(`Registered scrollUp: ${keybinds.scrollUp}`);
+            logger.info(`Registered scrollUp: ${keybinds.scrollUp}`);
         } catch (error) {
-            console.error(`Failed to register scrollUp (${keybinds.scrollUp}):`, error);
+            logger.error(`Failed to register scrollUp (${keybinds.scrollUp}):`, error);
         }
     }
 
@@ -338,12 +338,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.scrollDown) {
         try {
             globalShortcut.register(keybinds.scrollDown, () => {
-                console.log('Scroll down shortcut triggered');
+                logger.info('Scroll down shortcut triggered');
                 sendToRenderer('scroll-response-down');
             });
-            console.log(`Registered scrollDown: ${keybinds.scrollDown}`);
+            logger.info(`Registered scrollDown: ${keybinds.scrollDown}`);
         } catch (error) {
-            console.error(`Failed to register scrollDown (${keybinds.scrollDown}):`, error);
+            logger.error(`Failed to register scrollDown (${keybinds.scrollDown}):`, error);
         }
     }
 }
@@ -380,7 +380,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
             }
             return { success: true };
         } catch (error) {
-            console.error('Error toggling window visibility:', error);
+            logger.error('Error toggling window visibility:', error);
             return { success: false, error: error.message };
         }
     });
@@ -389,7 +389,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
         return new Promise(resolve => {
             // Check if window is destroyed before starting animation
             if (mainWindow.isDestroyed()) {
-                console.log('Cannot animate resize: window has been destroyed');
+                logger.info('Cannot animate resize: window has been destroyed');
                 resolve();
                 return;
             }
@@ -404,12 +404,12 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
 
             // If already at target size, no need to animate
             if (startWidth === targetWidth && startHeight === targetHeight) {
-                console.log(`Window already at target size for ${layoutMode} mode`);
+                logger.info(`Window already at target size for ${layoutMode} mode`);
                 resolve();
                 return;
             }
 
-            console.log(`Starting animated resize from ${startWidth}x${startHeight} to ${targetWidth}x${targetHeight}`);
+            logger.info(`Starting animated resize from ${startWidth}x${startHeight} to ${targetWidth}x${targetHeight}`);
 
             windowResizing = true;
             mainWindow.setResizable(true);
@@ -461,7 +461,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
                         mainWindow.setPosition(finalX, 0);
                     }
 
-                    console.log(`Animation complete: ${targetWidth}x${targetHeight}`);
+                    logger.info(`Animation complete: ${targetWidth}x${targetHeight}`);
                     resolve();
                 }
             }, 1000 / frameRate);
@@ -480,12 +480,12 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
                 viewName = await event.sender.executeJavaScript('cheddar.getCurrentView()');
                 layoutMode = await event.sender.executeJavaScript('cheddar.getLayoutMode()');
             } catch (error) {
-                console.warn('Failed to get view/layout from renderer, using defaults:', error);
+                logger.warn('Failed to get view/layout from renderer, using defaults:', error);
                 viewName = 'main';
                 layoutMode = 'normal';
             }
 
-            console.log('Size update requested for view:', viewName, 'layout:', layoutMode);
+            logger.info('Size update requested for view:', viewName, 'layout:', layoutMode);
 
             let targetWidth, targetHeight;
 
@@ -522,18 +522,18 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
             }
 
             const [currentWidth, currentHeight] = mainWindow.getSize();
-            console.log('Current window size:', currentWidth, 'x', currentHeight);
+            logger.info('Current window size:', currentWidth, 'x', currentHeight);
 
             // If currently resizing, the animation will start from current position
             if (windowResizing) {
-                console.log('Interrupting current resize animation');
+                logger.info('Interrupting current resize animation');
             }
 
             await animateWindowResize(mainWindow, targetWidth, targetHeight, `${viewName} view (${layoutMode})`);
 
             return { success: true };
         } catch (error) {
-            console.error('Error updating sizes:', error);
+            logger.error('Error updating sizes:', error);
             return { success: false, error: error.message };
         }
     });
