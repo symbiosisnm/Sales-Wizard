@@ -25,7 +25,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             });
             return { success: true };
         } catch (error) {
-            console.error('Error sending audio:', error);
+            logger.error('Error sending audio:', error);
             return { success: false, error: error.message };
         }
     });
@@ -49,7 +49,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             const success = await audioHandler.startMacOSAudioCapture(geminiSessionRef);
             return { success };
         } catch (error) {
-            console.error('Error starting macOS audio capture:', error);
+            logger.error('Error starting macOS audio capture:', error);
             return { success: false, error: error.message };
         }
     });
@@ -59,7 +59,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             audioHandler.stopMacOSAudioCapture();
             return { success: true };
         } catch (error) {
-            console.error('Error stopping macOS audio capture:', error);
+            logger.error('Error stopping macOS audio capture:', error);
             return { success: false, error: error.message };
         }
     });
@@ -74,7 +74,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
             return { success: true };
         } catch (error) {
-            console.error('Error closing session:', error);
+            logger.error('Error closing session:', error);
             return { success: false, error: error.message };
         }
     });
@@ -83,7 +83,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         try {
             return { success: true, data: conversationStore.getCurrentSessionData() };
         } catch (error) {
-            console.error('Error getting current session:', error);
+            logger.error('Error getting current session:', error);
             return { success: false, error: error.message };
         }
     });
@@ -93,17 +93,17 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             const sessionId = conversationStore.initializeNewSession();
             return { success: true, sessionId };
         } catch (error) {
-            console.error('Error starting new session:', error);
+            logger.error('Error starting new session:', error);
             return { success: false, error: error.message };
         }
     });
 
     ipcMain.handle('update-google-search-setting', async enabled => {
         try {
-            console.log('Google Search setting updated to:', enabled);
+            logger.info('Google Search setting updated to:', enabled);
             return { success: true };
         } catch (error) {
-            console.error('Error updating Google Search setting:', error);
+            logger.error('Error updating Google Search setting:', error);
             return { success: false, error: error.message };
         }
     });

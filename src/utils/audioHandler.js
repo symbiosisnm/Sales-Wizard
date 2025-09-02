@@ -46,7 +46,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
 
     systemAudioProc = spawn(systemAudioPath, [], spawnOptions);
     if (!systemAudioProc.pid) {
-        console.error('Failed to start SystemAudioDump');
+        logger.error('Failed to start SystemAudioDump');
         return false;
     }
 
@@ -77,7 +77,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     });
 
     systemAudioProc.stderr.on('data', data => {
-        console.error('SystemAudioDump stderr:', data.toString());
+        logger.error('SystemAudioDump stderr:', data.toString());
     });
 
     systemAudioProc.on('close', () => {
@@ -85,7 +85,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     });
 
     systemAudioProc.on('error', err => {
-        console.error('SystemAudioDump process error:', err);
+        logger.error('SystemAudioDump process error:', err);
         systemAudioProc = null;
     });
 
@@ -125,7 +125,7 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
             });
         }
     } catch (error) {
-        console.error('Error sending audio to Gemini:', error);
+        logger.error('Error sending audio to Gemini:', error);
     }
 }
 

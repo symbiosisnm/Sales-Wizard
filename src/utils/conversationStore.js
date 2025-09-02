@@ -6,7 +6,7 @@ let conversationHistory = [];
 function initializeNewSession() {
     currentSessionId = Date.now().toString();
     conversationHistory = [];
-    console.log('New conversation session started:', currentSessionId);
+    logger.info('New conversation session started:', currentSessionId);
     return currentSessionId;
 }
 
@@ -22,7 +22,7 @@ function saveConversationTurn(transcription, aiResponse) {
     };
 
     conversationHistory.push(conversationTurn);
-    console.log('Saved conversation turn:', conversationTurn);
+    logger.info('Saved conversation turn:', conversationTurn);
 
     sendToRenderer('save-conversation-turn', {
         sessionId: currentSessionId,

@@ -38,7 +38,7 @@ async function sendReconnectionContext(geminiSessionRef) {
         const contextMessage = `Till now all these questions were asked in the interview, answer the last one please:\n\n${transcriptions.join('\n')}`;
         await geminiSessionRef.current.sendRealtimeInput({ text: contextMessage });
     } catch (error) {
-        console.error('Error sending reconnection context:', error);
+        logger.error('Error sending reconnection context:', error);
     }
 }
 
@@ -65,7 +65,7 @@ async function attemptReconnection(geminiSessionRef, initializeSessionFn) {
             return true;
         }
     } catch (error) {
-        console.error(`Reconnection attempt ${reconnectionAttempts} failed:`, error);
+        logger.error(`Reconnection attempt ${reconnectionAttempts} failed:`, error);
     }
     if (reconnectionAttempts < maxReconnectionAttempts) {
         return attemptReconnection(geminiSessionRef, initializeSessionFn);

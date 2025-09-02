@@ -7,15 +7,15 @@ const { getCurrentRandomDisplayName } = require('./processNames');
  * @param {BrowserWindow} mainWindow - The main application window
  */
 function applyStealthMeasures(mainWindow) {
-    console.log('Applying additional stealth measures...');
+    logger.info('Applying additional stealth measures...');
 
     // Hide from alt-tab on Windows
     if (process.platform === 'win32') {
         try {
             mainWindow.setSkipTaskbar(true);
-            console.log('Hidden from Windows taskbar');
+            logger.info('Hidden from Windows taskbar');
         } catch (error) {
-            console.warn('Could not hide from taskbar:', error.message);
+            logger.warn('Could not hide from taskbar:', error.message);
         }
     }
 
@@ -23,9 +23,9 @@ function applyStealthMeasures(mainWindow) {
     if (process.platform === 'darwin') {
         try {
             mainWindow.setHiddenInMissionControl(true);
-            console.log('Hidden from macOS Mission Control');
+            logger.info('Hidden from macOS Mission Control');
         } catch (error) {
-            console.warn('Could not hide from Mission Control:', error.message);
+            logger.warn('Could not hide from Mission Control:', error.message);
         }
     }
 
@@ -35,18 +35,18 @@ function applyStealthMeasures(mainWindow) {
             const { app } = require('electron');
             const randomName = getCurrentRandomDisplayName();
             app.setName(randomName);
-            console.log(`Set app name to: ${randomName}`);
+            logger.info(`Set app name to: ${randomName}`);
         } catch (error) {
-            console.warn('Could not set app name:', error.message);
+            logger.warn('Could not set app name:', error.message);
         }
     }
 
     // Prevent screenshots if content protection is enabled
     try {
         mainWindow.setContentProtection(true);
-        console.log('Content protection enabled');
+        logger.info('Content protection enabled');
     } catch (error) {
-        console.warn('Could not enable content protection:', error.message);
+        logger.warn('Could not enable content protection:', error.message);
     }
 
     // Randomize window user agent
@@ -58,9 +58,9 @@ function applyStealthMeasures(mainWindow) {
         ];
         const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
         mainWindow.webContents.setUserAgent(randomUA);
-        console.log('Set random user agent');
+        logger.info('Set random user agent');
     } catch (error) {
-        console.warn('Could not set user agent:', error.message);
+        logger.warn('Could not set user agent:', error.message);
     }
 }
 
@@ -100,7 +100,7 @@ function startTitleRandomization(mainWindow) {
                 clearInterval(interval);
             }
         } catch (error) {
-            console.warn('Could not update window title:', error.message);
+            logger.warn('Could not update window title:', error.message);
             clearInterval(interval);
         }
     }, 30000 + Math.random() * 30000); // 30-60 seconds
@@ -112,11 +112,11 @@ function startTitleRandomization(mainWindow) {
  * Anti-debugging and anti-analysis measures
  */
 function applyAntiAnalysisMeasures() {
-    console.log('Applying anti-analysis measures...');
+    logger.info('Applying anti-analysis measures...');
 
     // Clear console on production
     if (process.env.NODE_ENV === 'production') {
-        console.clear();
+        logger.debug('Clearing console');
     }
 
     // Randomize startup delay to avoid pattern detection

@@ -276,7 +276,7 @@ export class HelpView extends LitElement {
             try {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...JSON.parse(savedKeybinds) };
             } catch (e) {
-                console.error('Failed to parse saved keybinds:', e);
+                logger.error('Failed to parse saved keybinds:', e);
                 this.keybinds = this.getDefaultKeybinds();
             }
         }

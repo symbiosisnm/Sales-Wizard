@@ -4,12 +4,12 @@ export async function resizeLayout() {
             const { ipcRenderer } = window.electron;
             const result = await ipcRenderer.invoke('update-sizes');
             if (result.success) {
-                console.log('Window resized for current view');
+                logger.info('Window resized for current view');
             } else {
-                console.error('Failed to resize window:', result.error);
+                logger.error('Failed to resize window:', result.error);
             }
         }
     } catch (error) {
-        console.error('Error resizing window:', error);
+        logger.error('Error resizing window:', error);
     }
 }

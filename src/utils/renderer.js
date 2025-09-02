@@ -9,10 +9,10 @@ ipcRenderer
     .invoke('get-random-display-name')
     .then(name => {
         window.randomDisplayName = name;
-        console.log('Set random display name:', name);
+        logger.info('Set random display name:', name);
     })
     .catch(err => {
-        console.warn('Could not get random display name:', err);
+        logger.warn('Could not get random display name:', err);
         window.randomDisplayName = 'System Monitor';
     });
 
@@ -133,7 +133,7 @@ let tokenTracker = {
         const currentTokens = this.getTokensInLastMinute();
         const throttleThreshold = Math.floor((maxTokensPerMin * throttleAtPercent) / 100);
 
-        console.log(`Token check: ${currentTokens}/${maxTokensPerMin} (throttle at ${throttleThreshold})`);
+        logger.info(`Token check: ${currentTokens}/${maxTokensPerMin} (throttle at ${throttleThreshold})`);
 
         return currentTokens >= throttleThreshold;
     },
@@ -193,13 +193,13 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
 
 // Listen for status updates
 ipcRenderer.on('update-status', (event, status) => {
-    console.log('Status update:', status);
+    logger.info('Status update:', status);
     cheddar.setStatus(status);
 });
 
 // Listen for responses - REMOVED: This is handled in CheatingDaddyApp.js to avoid duplicates
 // ipcRenderer.on('update-response', (event, response) => {
-//     console.log('Gemini response:', response);
+//     logger.info('Gemini response:', response);
 //     cheddar.e().setResponse(response);
 //     // You can add UI elements to display the response if needed
 // });
@@ -210,7 +210,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
     // Reset token tracker when starting new capture session
     tokenTracker.reset();
-    console.log('🎯 Token tracker reset for new capture session');
+    logger.info('🎯 Token tracker reset for new capture session');
 
     // Load screenshot region preference
     try {
@@ -222,7 +222,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     try {
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
-            console.log('Starting macOS capture with SystemAudioDump...');
+            logger.info('Starting macOS capture with SystemAudioDump...');
 
             // Start macOS audio capture
             const audioResult = await ipcRenderer.invoke('start-macos-audio');
@@ -240,7 +240,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 audio: false, // Don't use browser audio on macOS
             });
 
-            console.log('macOS screen capture started - audio handled by SystemAudioDump');
+            logger.info('macOS screen capture started - audio handled by SystemAudioDump');
         } else if (isLinux) {
             // Linux - use display media for screen capture and try to get system audio
             try {
@@ -260,12 +260,12 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     },
                 });
 
-                console.log('Linux system audio capture via getDisplayMedia succeeded');
+                logger.info('Linux system audio capture via getDisplayMedia succeeded');
 
                 // Setup audio processing for Linux system audio
                 setupLinuxSystemAudioProcessing();
             } catch (systemAudioError) {
-                console.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
+                logger.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
 
                 // Fallback to screen-only capture
                 mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -292,16 +292,16 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     video: false,
                 });
 
-                console.log('Linux microphone capture started');
+                logger.info('Linux microphone capture started');
 
                 // Setup audio processing for microphone on Linux
                 setupLinuxMicProcessing(micStream);
             } catch (micError) {
-                console.warn('Failed to get microphone access on Linux:', micError);
+                logger.warn('Failed to get microphone access on Linux:', micError);
                 // Continue without microphone if permission denied
             }
 
-            console.log('Linux capture started - system audio:', mediaStream.getAudioTracks().length > 0, 'microphone:', micStream !== null);
+            logger.info('Linux capture started - system audio:', mediaStream.getAudioTracks().length > 0, 'microphone:', micStream !== null);
         } else {
             // Windows - use display media with loopback for system audio
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -319,13 +319,13 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 },
             });
 
-            console.log('Windows capture started with loopback audio');
+            logger.info('Windows capture started with loopback audio');
 
             // Setup audio processing for Windows loopback audio only
             setupWindowsLoopbackProcessing();
         }
 
-        console.log('MediaStream obtained:', {
+        logger.info('MediaStream obtained:', {
             hasVideo: mediaStream.getVideoTracks().length > 0,
             hasAudio: mediaStream.getAudioTracks().length > 0,
             videoTrack: mediaStream.getVideoTracks()[0]?.getSettings(),
@@ -333,7 +333,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
         // Start capturing screenshots - check if manual mode
         if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
-            console.log('Manual mode enabled - screenshots will be captured on demand only');
+            logger.info('Manual mode enabled - screenshots will be captured on demand only');
             // Don't start automatic capture in manual mode
         } else {
             const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
@@ -343,7 +343,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             setTimeout(() => captureScreenshot(imageQuality), 100);
         }
     } catch (err) {
-        console.error('Error starting capture:', err);
+        logger.error('Error starting capture:', err);
         cheddar.setStatus('error');
     }
 }
@@ -477,9 +477,9 @@ async function enableMicStreaming() {
         proc.connect(pttMicContext.destination);
         pttMicStream = stream;
         micEnabled = true;
-        console.log('Microphone streaming enabled');
+        logger.info('Microphone streaming enabled');
     } catch (e) {
-        console.error('Failed to enable microphone streaming:', e);
+        logger.error('Failed to enable microphone streaming:', e);
     }
 }
 
@@ -494,9 +494,9 @@ function disableMicStreaming() {
             pttMicContext.close();
             pttMicContext = null;
         }
-        console.log('Microphone streaming disabled');
+        logger.info('Microphone streaming disabled');
     } catch (e) {
-        console.error('Error disabling mic:', e);
+        logger.error('Error disabling mic:', e);
     }
 }
 
@@ -509,12 +509,12 @@ window.addEventListener('cheddar-toggle-mic', async () => {
 });
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
-    console.log(`Capturing ${isManual ? 'manual' : 'automated'} screenshot...`);
+    logger.info(`Capturing ${isManual ? 'manual' : 'automated'} screenshot...`);
     if (!mediaStream) return { success: false, error: 'No media stream' };
 
     // Check rate limiting for automated screenshots only
     if (!isManual && tokenTracker.shouldThrottle()) {
-        console.log('⚠️ Automated screenshot skipped due to rate limiting');
+        logger.info('⚠️ Automated screenshot skipped due to rate limiting');
         return { success: false, error: 'Rate limited' };
     }
 
@@ -540,7 +540,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
     // Check if video is ready
     if (hiddenVideo.readyState < 2) {
-        console.warn('Video not ready yet, skipping screenshot');
+        logger.warn('Video not ready yet, skipping screenshot');
         return { success: false, error: 'Video not ready' };
     }
 
@@ -582,7 +582,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     });
 
     if (isBlank) {
-        console.warn('Screenshot appears to be blank/black');
+        logger.warn('Screenshot appears to be blank/black');
     }
 
     let qualityValue;
@@ -604,7 +604,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
         drawCanvas.toBlob(
             async blob => {
                 if (!blob) {
-                    console.error('Failed to create blob from canvas');
+                    logger.error('Failed to create blob from canvas');
                     return resolve({ success: false, error: 'Blob creation failed' });
                 }
 
@@ -614,7 +614,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
                     // Validate base64 data
                     if (!base64data || base64data.length < 100) {
-                        console.error('Invalid base64 data generated');
+                        logger.error('Invalid base64 data generated');
                         return resolve({ success: false, error: 'Invalid base64 data' });
                     }
 
@@ -627,14 +627,14 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                             // Track image tokens after successful send
                             const imageTokens = tokenTracker.calculateImageTokens(drawCanvas.width, drawCanvas.height);
                             tokenTracker.addTokens(imageTokens, 'image');
-                            console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${drawCanvas.width}x${drawCanvas.height})`);
+                            logger.info(`📊 Image sent successfully - ${imageTokens} tokens used (${drawCanvas.width}x${drawCanvas.height})`);
                         } else {
-                            console.error('Failed to send image:', result.error);
+                            logger.error('Failed to send image:', result.error);
                         }
 
                         resolve(result);
                     } catch (err) {
-                        console.error('Failed to send image:', err);
+                        logger.error('Failed to send image:', err);
                         resolve({ success: false, error: err.message });
                     }
                 };
@@ -647,7 +647,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 }
 
 async function captureManualScreenshot(imageQuality = null) {
-    console.log('Manual screenshot triggered');
+    logger.info('Manual screenshot triggered');
     const quality = imageQuality || currentImageQuality;
     const result = await captureScreenshot(quality, true); // Pass true for isManual
     if (result?.success) {
@@ -657,7 +657,7 @@ async function captureManualScreenshot(imageQuality = null) {
         If its a mcq question, give me the answer no bs, complete answer.
         `);
     } else {
-        console.warn('Skipping text message due to failed screenshot');
+        logger.warn('Skipping text message due to failed screenshot');
     }
 }
 
@@ -697,7 +697,7 @@ function stopCapture() {
     // Stop macOS audio capture if running
     if (isMacOS) {
         ipcRenderer.invoke('stop-macos-audio').catch(err => {
-            console.error('Error stopping macOS audio:', err);
+            logger.error('Error stopping macOS audio:', err);
         });
     }
 
@@ -714,20 +714,20 @@ function stopCapture() {
 // Send text message to Gemini
 async function sendTextMessage(text) {
     if (!text || text.trim().length === 0) {
-        console.warn('Cannot send empty text message');
+        logger.warn('Cannot send empty text message');
         return { success: false, error: 'Empty message' };
     }
 
     try {
         const result = await ipcRenderer.invoke('send-text-message', text);
         if (result.success) {
-            console.log('Text message sent successfully');
+            logger.info('Text message sent successfully');
         } else {
-            console.error('Failed to send text message:', result.error);
+            logger.error('Failed to send text message:', result.error);
         }
         return result;
     } catch (error) {
-        console.error('Error sending text message:', error);
+        logger.error('Error sending text message:', error);
         return { success: false, error: error.message };
     }
 }
@@ -818,14 +818,14 @@ async function getAllConversationSessions() {
 ipcRenderer.on('save-conversation-turn', async (event, data) => {
     try {
         await saveConversationSession(data.sessionId, data.fullHistory);
-        console.log('Conversation session saved:', data.sessionId);
+        logger.info('Conversation session saved:', data.sessionId);
     } catch (error) {
-        console.error('Error saving conversation session:', error);
+        logger.error('Error saving conversation session:', error);
     }
 });
 
 // Initialize conversation storage when renderer loads
-initConversationStorage().catch(console.error);
+initConversationStorage().catch(logger.error);
 
 // Handle shortcuts based on current view
 function handleShortcut(shortcutKey) {

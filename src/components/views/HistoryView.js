@@ -338,7 +338,7 @@ export class HistoryView extends LitElement {
             this.loading = true;
             this.sessions = await cheddar.getAllConversationSessions();
         } catch (error) {
-            console.error('Error loading conversation sessions:', error);
+            logger.error('Error loading conversation sessions:', error);
             this.sessions = [];
         } finally {
             this.loading = false;

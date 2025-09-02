@@ -606,7 +606,7 @@ export class CustomizeView extends LitElement {
             try {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...JSON.parse(savedKeybinds) };
             } catch (e) {
-                console.error('Failed to parse saved keybinds:', e);
+                logger.error('Failed to parse saved keybinds:', e);
                 this.keybinds = this.getDefaultKeybinds();
             }
         }
@@ -798,7 +798,7 @@ export class CustomizeView extends LitElement {
                 const { ipcRenderer } = window.electron;
                 await ipcRenderer.invoke('update-google-search-setting', this.googleSearchEnabled);
             } catch (error) {
-                console.error('Failed to notify main process:', error);
+                logger.error('Failed to notify main process:', error);
             }
         }
 

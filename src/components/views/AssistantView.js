@@ -349,11 +349,11 @@ export class AssistantView extends LitElement {
                 rendered = this.wrapWordsInSpans(rendered);
                 return rendered;
             } catch (error) {
-                console.warn('Error parsing markdown:', error);
+                logger.warn('Error parsing markdown:', error);
                 return content; // Fallback to plain text
             }
         }
-        console.log('Marked not available, using plain text');
+        logger.info('Marked not available, using plain text');
         return content; // Fallback if marked is not available
     }
 
@@ -449,22 +449,22 @@ export class AssistantView extends LitElement {
             const { ipcRenderer } = window.electron;
 
             this.handlePreviousResponse = () => {
-                console.log('Received navigate-previous-response message');
+                logger.info('Received navigate-previous-response message');
                 this.navigateToPreviousResponse();
             };
 
             this.handleNextResponse = () => {
-                console.log('Received navigate-next-response message');
+                logger.info('Received navigate-next-response message');
                 this.navigateToNextResponse();
             };
 
             this.handleScrollUp = () => {
-                console.log('Received scroll-response-up message');
+                logger.info('Received scroll-response-up message');
                 this.scrollResponseUp();
             };
 
             this.handleScrollDown = () => {
-                console.log('Received scroll-response-down message');
+                logger.info('Received scroll-response-down message');
                 this.scrollResponseDown();
             };
 
@@ -559,13 +559,13 @@ export class AssistantView extends LitElement {
     }
 
     updateResponseContent() {
-        console.log('updateResponseContent called');
+        logger.info('updateResponseContent called');
         const container = this.shadowRoot.querySelector('#responseContainer');
         if (container) {
             const currentResponse = this.getCurrentResponse();
-            console.log('Current response:', currentResponse);
+            logger.info('Current response:', currentResponse);
             const renderedResponse = this.renderMarkdown(currentResponse);
-            console.log('Rendered response:', renderedResponse);
+            logger.info('Rendered response:', renderedResponse);
             container.innerHTML = renderedResponse;
             const words = container.querySelectorAll('[data-word]');
             if (this.shouldAnimateResponse) {
@@ -590,7 +590,7 @@ export class AssistantView extends LitElement {
                 this._lastAnimatedWordCount = words.length;
             }
         } else {
-            console.log('Response container not found');
+            logger.info('Response container not found');
         }
     }
 

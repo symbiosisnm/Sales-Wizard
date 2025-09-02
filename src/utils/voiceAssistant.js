@@ -10,7 +10,7 @@
  *
  * import { startListening } from './utils/voiceAssistant.js';
  * const stop = startListening(transcript => {
- *   console.log('You said:', transcript);
+ *   logger.info('You said:', transcript);
  * });
  *
  * // Later, when you want to stop listening:
@@ -21,7 +21,7 @@ export function startListening(onTranscript) {
   const SpeechRecognition =
     window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    console.warn('SpeechRecognition API is not available in this environment');
+    logger.warn('SpeechRecognition API is not available in this environment');
     return () => {};
   }
   const recognizer = new SpeechRecognition();
@@ -37,14 +37,14 @@ export function startListening(onTranscript) {
         try {
           onTranscript(transcript);
         } catch (err) {
-          console.error('Error in transcript callback:', err);
+          logger.error('Error in transcript callback:', err);
         }
       }
     }
   };
 
   recognizer.onerror = event => {
-    console.error('Speech recognition error:', event.error);
+    logger.error('Speech recognition error:', event.error);
   };
 
   recognizer.onend = () => {
