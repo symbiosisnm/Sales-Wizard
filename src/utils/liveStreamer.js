@@ -25,26 +25,71 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
     const source = audioCtx.createMediaStreamSource(audioStream);
-    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-    source.connect(processor);
-    processor.connect(audioCtx.destination);
-    processor.onaudioprocess = e => {
-      const input = e.inputBuffer.getChannelData(0);
-      const pcm = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const s = Math.max(-1, Math.min(1, input[i]));
-        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
-      const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
-      const base64 = btoa(binary);
-      client.sendPcm16Base64(base64);
-    };
-    audioCleanup = () => {
-      processor.disconnect();
+
+    const cleanup = () => {
       source.disconnect();
       audioStream.getTracks().forEach(t => t.stop());
       audioCtx.close();
     };
+
+    if (audioCtx.audioWorklet) {
+      try {
+        await audioCtx.audioWorklet.addModule(new URL('./pcm16-worklet.js', import.meta.url));
+        const node = new AudioWorkletNode(audioCtx, 'pcm16-worklet', {
+          processorOptions: { targetSampleRate: 16000, samplesPerChunk: 1600 }
+        });
+        node.port.onmessage = e => {
+          const base64 = btoa(String.fromCharCode(...e.data));
+          client.sendPcm16Base64(base64);
+        };
+        source.connect(node);
+        node.connect(audioCtx.destination);
+        audioCleanup = () => {
+          node.disconnect();
+          cleanup();
+        };
+      } catch (err) {
+        console.warn('AudioWorklet init failed, falling back to ScriptProcessor:', err);
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+        processor.onaudioprocess = e => {
+          const input = e.inputBuffer.getChannelData(0);
+          const pcm = new Int16Array(input.length);
+          for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]));
+            pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          }
+          const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
+          const base64 = btoa(binary);
+          client.sendPcm16Base64(base64);
+        };
+        audioCleanup = () => {
+          processor.disconnect();
+          cleanup();
+        };
+      }
+    } else {
+      console.warn('AudioWorklet not supported, using ScriptProcessor');
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      processor.onaudioprocess = e => {
+        const input = e.inputBuffer.getChannelData(0);
+        const pcm = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+          const s = Math.max(-1, Math.min(1, input[i]));
+          pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+        const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
+        const base64 = btoa(binary);
+        client.sendPcm16Base64(base64);
+      };
+      audioCleanup = () => {
+        processor.disconnect();
+        cleanup();
+      };
+    }
   } catch (err) {
     console.warn('Audio streaming failed to initialise:', err);
   }
