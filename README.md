@@ -53,3 +53,14 @@ A real-time AI assistant that provides contextual help during video calls, inter
 - Gemini API key
 - Screen recording permissions
 - Microphone/audio permissions
+
+## Security
+
+To restrict access to the backend server:
+
+- Set `AUTH_TOKEN` in your `.env` file and provide the same value in the `x-auth-token` header when calling `/ask` or connecting to `/live`.
+  - Missing tokens result in **401 Unauthorized**.
+  - Invalid tokens result in **403 Forbidden**.
+- Use `ALLOWED_ORIGINS` to list allowed origins for CORS. Origins not in the list are blocked.
+
+These settings help ensure only trusted clients can interact with the service.

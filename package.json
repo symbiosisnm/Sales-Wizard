@@ -12,7 +12,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint .",
-    "test": "node --test src/utils/__tests__/*.test.js",
+    "test": "node --test src/utils/__tests__/*.test.js backend/__tests__/*.test.js",
     "format": "prettier --write ."
   },
   "keywords": [
@@ -29,6 +29,7 @@
   "license": "GPL-3.0",
   "dependencies": {
     "@google/genai": "^1.2.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "electron-squirrel-startup": "^1.0.1",
     "express": "^4.19.2",
