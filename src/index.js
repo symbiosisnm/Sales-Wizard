@@ -75,19 +75,33 @@ function setupGeneralIpcHandlers() {
         }
     });
 
-    ipcMain.handle('update-content-protection', async () => {
+    ipcMain.handle('update-content-protection', async (_event, enabled) => {
         try {
             if (mainWindow) {
-                // Get content protection setting from localStorage via cheddar
-                const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
+                const contentProtection = typeof enabled === 'boolean' ? enabled : true;
                 mainWindow.setContentProtection(contentProtection);
                 console.log('Content protection updated:', contentProtection);
+                return { success: true, value: contentProtection };
             }
-            return { success: true };
+            return { success: false, error: 'No main window' };
         } catch (error) {
             console.error('Error updating content protection:', error);
             return { success: false, error: error.message };
         }
+    });
+
+    ipcMain.handle('settings-get', async (_event, key) => {
+        try {
+            if (mainWindow) {
+                const value = await mainWindow.webContents.executeJavaScript(
+                    `localStorage.getItem(${JSON.stringify(key)})`
+                );
+                return value;
+            }
+        } catch (error) {
+            console.error('Error getting setting', key, error);
+        }
+        return null;
     });
 
     ipcMain.handle('get-random-display-name', async () => {

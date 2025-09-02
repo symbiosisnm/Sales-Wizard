@@ -10,23 +10,14 @@ let messageBuffer = '';
 
 async function getStoredSetting(key, defaultValue) {
     try {
-        const { BrowserWindow } = require('electron');
-        const windows = BrowserWindow.getAllWindows();
-        if (windows.length > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            const value = await windows[0].webContents.executeJavaScript(`
-                (function() {
-                    try {
-                        if (typeof localStorage === 'undefined') {
-                            return '${defaultValue}';
-                        }
-                        const stored = localStorage.getItem('${key}');
-                        return stored || '${defaultValue}';
-                    } catch (e) {
-                        return '${defaultValue}';
-                    }
-                })()`);
-            return value;
+        if (global.window?.electron?.ipcRenderer?.invoke) {
+            const result = await global.window.electron.ipcRenderer.invoke(
+                'settings-get',
+                key
+            );
+            if (typeof result === 'string') {
+                return result;
+            }
         }
     } catch (error) {
         console.error('Error getting stored setting for', key, ':', error.message);
