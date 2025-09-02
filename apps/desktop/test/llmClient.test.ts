@@ -1,5 +1,5 @@
 // apps/desktop/test/llmClient.test.ts
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { LLMClient } from '../src/services/llmClient';
 
@@ -83,5 +83,80 @@ describe('LLMClient', () => {
 
     client.end();
     wss.close();
+  });
+
+  it('rejects with timeout if onopen never fires', async () => {
+    const originalWS = WebSocket;
+    vi.useFakeTimers();
+
+    class HangingWS {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      static CLOSED = 3;
+      onopen: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: ((e: any) => void) | null = null;
+      onmessage: ((e: any) => void) | null = null;
+      readyState = HangingWS.CONNECTING;
+      constructor(_url: string) {}
+      send() {}
+      close() { this.readyState = HangingWS.CLOSED; }
+    }
+
+    (globalThis as any).WebSocket = HangingWS as any;
+
+    const client = new LLMClient({ url: 'ws://timeout' });
+    const errors: string[] = [];
+    client.onError = (e) => errors.push(e);
+
+    const promise = client.connect();
+    const expectation = expect(promise).rejects.toThrow(/timeout/i);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expectation;
+    expect(errors.some((e) => e.toLowerCase().includes('timeout'))).toBe(true);
+
+    (globalThis as any).WebSocket = originalWS;
+    vi.useRealTimers();
+  });
+
+  it('rejects if websocket closes before open', async () => {
+    const originalWS = WebSocket;
+    vi.useFakeTimers();
+
+    class ClosingWS {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      static CLOSED = 3;
+      onopen: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: ((e: any) => void) | null = null;
+      onmessage: ((e: any) => void) | null = null;
+      readyState = ClosingWS.CONNECTING;
+      constructor(_url: string) {
+        setTimeout(() => {
+          this.readyState = ClosingWS.CLOSED;
+          this.onclose?.({ code: 1006 } as any);
+        }, 0);
+      }
+      send() {}
+      close() { this.readyState = ClosingWS.CLOSED; }
+    }
+
+    (globalThis as any).WebSocket = ClosingWS as any;
+
+    const client = new LLMClient({ url: 'ws://closed' });
+    const errors: string[] = [];
+    client.onError = (e) => errors.push(e);
+
+    const promise = client.connect();
+    const expectation = expect(promise).rejects.toThrow(/closed/i);
+    await vi.runAllTimersAsync();
+    await expectation;
+    expect(errors.some((e) => e.toLowerCase().includes('closed'))).toBe(true);
+
+    (globalThis as any).WebSocket = originalWS;
+    vi.useRealTimers();
   });
 });
