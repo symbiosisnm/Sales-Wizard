@@ -12,7 +12,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint .",
-    "test": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
+    "test": "node -r ./src/utils/logger.js --test src/utils/__tests__ backend/__tests__",
     "format": "prettier --write ."
   },
   "keywords": [
@@ -50,6 +50,7 @@
     "concurrently": "^8.2.2",
     "electron": "^30.0.5",
     "eslint": "^8.57.1",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "supertest": "^6.3.3"
   }
 }
