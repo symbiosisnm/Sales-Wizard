@@ -5,7 +5,7 @@ const eslint = new ESLint({
   useEslintrc: false,
   baseConfig: {
     env: { browser: true, es2022: true },
-    extends: ['eslint:recommended'],
+    extends: ['eslint:recommended', 'plugin:prettier/recommended'],
     parserOptions: { sourceType: 'module', ecmaVersion: 'latest' },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],

@@ -2,5 +2,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  speak: (text) => ipcRenderer.invoke('speak', text)
+    speak: text => ipcRenderer.invoke('speak', text),
 });

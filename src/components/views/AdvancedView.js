@@ -475,7 +475,7 @@ export class AdvancedView extends LitElement {
     async handleContentProtectionChange(e) {
         this.contentProtection = e.target.checked;
         localStorage.setItem('contentProtection', this.contentProtection.toString());
-        
+
         // Update the window's content protection in real-time
         if (window.electron?.ipcRenderer) {
             const { ipcRenderer } = window.electron;
@@ -485,11 +485,9 @@ export class AdvancedView extends LitElement {
                 logger.error('Failed to update content protection:', error);
             }
         }
-        
+
         this.requestUpdate();
     }
-
-
 
     render() {
         return html`
@@ -500,8 +498,8 @@ export class AdvancedView extends LitElement {
                         <span>🔒 Content Protection</span>
                     </div>
                     <div class="advanced-description">
-                        Content protection makes the application window invisible to screen sharing and recording software. 
-                        This is useful for privacy when sharing your screen, but may interfere with certain display setups like DisplayLink.
+                        Content protection makes the application window invisible to screen sharing and recording software. This is useful for privacy
+                        when sharing your screen, but may interfere with certain display setups like DisplayLink.
                     </div>
 
                     <div class="form-grid">
@@ -513,13 +511,11 @@ export class AdvancedView extends LitElement {
                                 .checked=${this.contentProtection}
                                 @change=${this.handleContentProtectionChange}
                             />
-                            <label for="content-protection" class="checkbox-label">
-                                Enable content protection (stealth mode)
-                            </label>
+                            <label for="content-protection" class="checkbox-label"> Enable content protection (stealth mode) </label>
                         </div>
                         <div class="form-description" style="margin-left: 22px;">
-                            ${this.contentProtection 
-                                ? 'The application is currently invisible to screen sharing and recording software.' 
+                            ${this.contentProtection
+                                ? 'The application is currently invisible to screen sharing and recording software.'
                                 : 'The application is currently visible to screen sharing and recording software.'}
                         </div>
                     </div>
@@ -596,8 +592,6 @@ export class AdvancedView extends LitElement {
                         </div>
                     </div>
                 </div>
-
-
 
                 <!-- Data Management Section -->
                 <div class="advanced-section danger-section">

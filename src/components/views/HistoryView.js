@@ -6,7 +6,11 @@ const API_BASE = 'http://localhost:3001';
 export class HistoryView extends LitElement {
     static styles = css`
         * {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family:
+                'Inter',
+                -apple-system,
+                BlinkMacSystemFont,
+                sans-serif;
             cursor: default;
             user-select: none;
         }
@@ -337,9 +341,9 @@ export class HistoryView extends LitElement {
 
     async loadSessions() {
         try {
-        this.loading = true;
-        const response = await fetch(`${API_BASE}/history`);
-        this.sessions = await response.json();
+            this.loading = true;
+            const response = await fetch(`${API_BASE}/history`);
+            this.sessions = await response.json();
         } catch (error) {
             logger.error('Error loading conversation sessions:', error);
             this.sessions = [];

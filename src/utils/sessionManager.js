@@ -36,10 +36,7 @@ async function getStoredSetting(key, defaultValue) {
 
 async function getEnabledTools() {
     const tools = [];
-    const googleSearchEnabled = await module.exports.getStoredSetting(
-        'googleSearchEnabled',
-        'true'
-    );
+    const googleSearchEnabled = await module.exports.getStoredSetting('googleSearchEnabled', 'true');
     if (googleSearchEnabled === 'true') {
         tools.push({ googleSearch: {} });
     }

@@ -11,8 +11,14 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint .",
-    "test": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
+    "lint": "npm run lint:root && npm run lint:backend && npm run lint:frontend",
+    "lint:root": "eslint .",
+    "lint:backend": "npm --prefix apps/server run lint",
+    "lint:frontend": "npm --prefix apps/desktop run lint",
+    "test": "npm run test:core && npm run test:backend && npm run test:frontend",
+    "test:core": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
+    "test:backend": "npm --prefix apps/server test",
+    "test:frontend": "npm --prefix apps/desktop test",
     "format": "prettier --write ."
   },
   "keywords": [
@@ -50,6 +56,8 @@
     "concurrently": "^8.2.2",
     "electron": "^30.0.5",
     "eslint": "^8.57.1",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1"
   }
 }

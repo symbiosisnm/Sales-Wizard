@@ -53,9 +53,8 @@ async function startMicrophoneCapture({ deviceId, sampleRate, channels }) {
     if (!ctx.audioWorklet) {
         throw new Error('AudioWorklet is not supported');
     }
-    const workletUrl = typeof window !== 'undefined'
-        ? new URL('./pcm16-worklet.js', window.location.href).toString()
-        : path.join(__dirname, 'pcm16-worklet.js');
+    const workletUrl =
+        typeof window !== 'undefined' ? new URL('./pcm16-worklet.js', window.location.href).toString() : path.join(__dirname, 'pcm16-worklet.js');
     await ctx.audioWorklet.addModule(workletUrl);
 
     const srcNode = ctx.createMediaStreamSource(mediaStream);

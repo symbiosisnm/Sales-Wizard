@@ -91,19 +91,22 @@ function startTitleRandomization(mainWindow) {
     ];
 
     // Change title every 30-60 seconds
-    const interval = setInterval(() => {
-        try {
-            if (!mainWindow.isDestroyed()) {
-                const randomTitle = titles[Math.floor(Math.random() * titles.length)];
-                mainWindow.setTitle(randomTitle);
-            } else {
+    const interval = setInterval(
+        () => {
+            try {
+                if (!mainWindow.isDestroyed()) {
+                    const randomTitle = titles[Math.floor(Math.random() * titles.length)];
+                    mainWindow.setTitle(randomTitle);
+                } else {
+                    clearInterval(interval);
+                }
+            } catch (error) {
+                logger.warn('Could not update window title:', error.message);
                 clearInterval(interval);
             }
-        } catch (error) {
-            logger.warn('Could not update window title:', error.message);
-            clearInterval(interval);
-        }
-    }, 30000 + Math.random() * 30000); // 30-60 seconds
+        },
+        30000 + Math.random() * 30000
+    ); // 30-60 seconds
 
     return interval;
 }

@@ -5,11 +5,15 @@ const assert = require('node:assert');
 global.sampleRate = 16000;
 const messages = [];
 class BaseProcessor {
-    constructor() { this.port = { postMessage: m => messages.push(m) }; }
+    constructor() {
+        this.port = { postMessage: m => messages.push(m) };
+    }
 }
 global.AudioWorkletProcessor = BaseProcessor;
 let ProcessorCtor;
-global.registerProcessor = (_name, ctor) => { ProcessorCtor = ctor; };
+global.registerProcessor = (_name, ctor) => {
+    ProcessorCtor = ctor;
+};
 
 // Load worklet definition
 require('../pcm16-worklet.js');

@@ -29,7 +29,9 @@ test('attemptReconnection stops after errors and updates status', async () => {
     conversationStore.initializeNewSession();
     reconnection.storeSessionParams({ apiKey: 'k', customPrompt: '', profile: 'p', language: 'en' });
     const geminiSessionRef = { current: null };
-    const initializeSessionFn = mock.fn(async () => { throw new Error('fail'); });
+    const initializeSessionFn = mock.fn(async () => {
+        throw new Error('fail');
+    });
     reconnection.__setReconnectionDelay(0);
     const result = await reconnection.attemptReconnection(geminiSessionRef, initializeSessionFn);
     assert.strictEqual(result, false);

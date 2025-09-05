@@ -1,7 +1,7 @@
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
-require("./utils/logger");
+require('./utils/logger');
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');

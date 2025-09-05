@@ -18,40 +18,39 @@
  */
 
 export function startListening(onTranscript) {
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    logger.warn('SpeechRecognition API is not available in this environment');
-    return () => {};
-  }
-  const recognizer = new SpeechRecognition();
-  recognizer.continuous = true;
-  recognizer.interimResults = false;
-  recognizer.lang = 'en-US';
-
-  recognizer.onresult = event => {
-    const result = event.results[event.results.length - 1];
-    if (result.isFinal) {
-      const transcript = result[0].transcript.trim();
-      if (transcript) {
-        try {
-          onTranscript(transcript);
-        } catch (err) {
-          logger.error('Error in transcript callback:', err);
-        }
-      }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        logger.warn('SpeechRecognition API is not available in this environment');
+        return () => {};
     }
-  };
+    const recognizer = new SpeechRecognition();
+    recognizer.continuous = true;
+    recognizer.interimResults = false;
+    recognizer.lang = 'en-US';
 
-  recognizer.onerror = event => {
-    logger.error('Speech recognition error:', event.error);
-  };
+    recognizer.onresult = event => {
+        const result = event.results[event.results.length - 1];
+        if (result.isFinal) {
+            const transcript = result[0].transcript.trim();
+            if (transcript) {
+                try {
+                    onTranscript(transcript);
+                } catch (err) {
+                    logger.error('Error in transcript callback:', err);
+                }
+            }
+        }
+    };
 
-  recognizer.onend = () => {
-    // Restart automatically if stopped unexpectedly
+    recognizer.onerror = event => {
+        logger.error('Speech recognition error:', event.error);
+    };
+
+    recognizer.onend = () => {
+        // Restart automatically if stopped unexpectedly
+        recognizer.start();
+    };
+
     recognizer.start();
-  };
-
-  recognizer.start();
-  return () => recognizer.stop();
+    return () => recognizer.stop();
 }

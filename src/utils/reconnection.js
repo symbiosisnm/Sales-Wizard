@@ -31,9 +31,7 @@ async function sendReconnectionContext(geminiSessionRef) {
     }
 
     try {
-        const transcriptions = history
-            .map(turn => turn.transcription)
-            .filter(t => t && t.trim().length > 0);
+        const transcriptions = history.map(turn => turn.transcription).filter(t => t && t.trim().length > 0);
         if (transcriptions.length === 0) return;
         const contextMessage = `Till now all these questions were asked in the interview, answer the last one please:\n\n${transcriptions.join('\n')}`;
         await geminiSessionRef.current.sendRealtimeInput({ text: contextMessage });

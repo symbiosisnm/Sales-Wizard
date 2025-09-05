@@ -82,7 +82,13 @@ test('close-session handles close errors', async () => {
     handlers = {};
     audioHandler.stopMacOSAudioCapture = mock.fn();
     reconnection.clearSessionParams = mock.fn();
-    const geminiSessionRef = { current: { close: mock.fn(async () => { throw new Error('boom'); }) } };
+    const geminiSessionRef = {
+        current: {
+            close: mock.fn(async () => {
+                throw new Error('boom');
+            }),
+        },
+    };
     gemini.setupGeminiIpcHandlers(geminiSessionRef);
 
     const result = await handlers['close-session']();
