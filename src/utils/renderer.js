@@ -17,7 +17,7 @@ ipcRenderer
     });
 
 let mediaStream = null;
-let screenshotInterval = null;
+let screenCapturer = null;
 let audioContext = null;
 let audioProcessor = null;
 let micAudioProcessor = null;
@@ -359,10 +359,26 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             // Don't start automatic capture in manual mode
         } else {
             const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
-            screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
-
-            // Capture first screenshot immediately
-            setTimeout(() => captureScreenshot(imageQuality), 100);
+            const { startScreenCapture } = await import('./screenCapture.js');
+            screenCapturer = await startScreenCapture({
+                intervalMs: intervalMilliseconds,
+                quality: imageQuality,
+                cropRegion: screenshotRegionMode,
+            });
+            screenCapturer.onFrame(async ({ data, width, height }) => {
+                try {
+                    const result = await ipcRenderer.invoke('send-image-content', { data });
+                    if (result.success) {
+                        const imageTokens = tokenTracker.calculateImageTokens(width, height);
+                        tokenTracker.addTokens(imageTokens, 'image');
+                        logger.info(`📊 Image sent successfully - ${imageTokens} tokens used (${width}x${height})`);
+                    } else {
+                        logger.error('Failed to send image:', result.error);
+                    }
+                } catch (err) {
+                    logger.error('Failed to send image:', err);
+                }
+            });
         }
     } catch (err) {
         logger.error('Error starting capture:', err);
@@ -744,9 +760,9 @@ async function captureManualScreenshot(imageQuality = null) {
 window.captureManualScreenshot = captureManualScreenshot;
 
 function stopCapture() {
-    if (screenshotInterval) {
-        clearInterval(screenshotInterval);
-        screenshotInterval = null;
+    if (screenCapturer) {
+        screenCapturer.stop();
+        screenCapturer = null;
     }
 
     if (audioProcessor) {
