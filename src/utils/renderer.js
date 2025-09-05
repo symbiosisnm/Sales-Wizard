@@ -31,6 +31,7 @@ let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
 let lastCursorPoint = null;
+let lastActiveWindow = null;
 let screenshotRegionMode = 'full';
 
 let pttMicContext = null;
@@ -55,6 +56,22 @@ function startCursorTracking() {
     poll();
 }
 startCursorTracking();
+
+// Periodically fetch active window bounds from main process
+function startActiveWindowTracking() {
+    if (!window.electron?.ipcRenderer) return;
+    const poll = async () => {
+        try {
+            const res = await window.electron.ipcRenderer.invoke('get-active-window');
+            if (res?.success) lastActiveWindow = res;
+        } catch (_e) {
+            /* empty */
+        }
+    };
+    setInterval(poll, 500);
+    poll();
+}
+startActiveWindowTracking();
 
 // Token tracking system for rate limiting
 let tokenTracker = {
@@ -363,10 +380,8 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             logger.info('Manual mode enabled - screenshots will be captured on demand only');
             // Don't start automatic capture in manual mode
         } else {
-            const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
             const { startScreenCapture } = await import('./screenCapture.js');
             screenCapturer = await startScreenCapture({
-                intervalMs: intervalMilliseconds,
                 quality: imageQuality,
                 cropRegion: screenshotRegionMode,
             });
@@ -668,6 +683,26 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
             cropped.height = cropH;
             const ctx = cropped.getContext('2d');
             ctx.drawImage(offscreenCanvas, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH);
+            drawCanvas = cropped;
+        } catch (_e) {
+            // ignore and fallback to full frame
+        }
+    } else if (screenshotRegionMode === 'window' && lastActiveWindow?.success) {
+        try {
+            const { bounds, displayBounds } = lastActiveWindow;
+            const screenW = displayBounds.width;
+            const screenH = displayBounds.height;
+            const vx = Math.max(0, bounds.x - displayBounds.x);
+            const vy = Math.max(0, bounds.y - displayBounds.y);
+            const sx = Math.floor((vx / screenW) * offscreenCanvas.width);
+            const sy = Math.floor((vy / screenH) * offscreenCanvas.height);
+            const cropW = Math.floor((bounds.width / screenW) * offscreenCanvas.width);
+            const cropH = Math.floor((bounds.height / screenH) * offscreenCanvas.height);
+            const cropped = document.createElement('canvas');
+            cropped.width = cropW;
+            cropped.height = cropH;
+            const ctx = cropped.getContext('2d');
+            ctx.drawImage(offscreenCanvas, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
             drawCanvas = cropped;
         } catch (_e) {
             // ignore and fallback to full frame

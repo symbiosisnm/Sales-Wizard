@@ -70,8 +70,9 @@ requirements and configuration for this feature.
 ### Screen Capture
 
 - Grant screen-recording permissions to the application when prompted.
-- By default, the screen is captured at **1 frame per second** as JPEG images
-  using the browser's default quality settings.
+- Screen frames are streamed in real-time using WebP compression. Capture
+  quality and region (full screen, around cursor, or active window) can be
+  adjusted in the application settings.
 
 ### Configuration
 

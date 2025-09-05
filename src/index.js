@@ -129,4 +129,24 @@ function setupGeneralIpcHandlers() {
             return { success: false, error: e.message };
         }
     });
+
+    // Provide active window bounds for window-region screenshots
+    ipcMain.handle('get-active-window', async () => {
+        try {
+            const aw = (await import('active-win')).default;
+            const info = await aw();
+            if (!info?.bounds) {
+                return { success: false, error: 'No active window information' };
+            }
+            const display = screen.getDisplayMatching(info.bounds);
+            return {
+                success: true,
+                bounds: info.bounds,
+                displayBounds: display.bounds,
+                scaleFactor: display.scaleFactor || 1,
+            };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
 }

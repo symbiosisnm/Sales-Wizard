@@ -1195,8 +1195,9 @@ export class CustomizeView extends LitElement {
                                 <select class="form-control" .value=${this.screenshotRegionMode} @change=${this.handleScreenshotRegionChange}>
                                     <option value="full" ?selected=${this.screenshotRegionMode === 'full'}>Full Screen</option>
                                     <option value="cursor" ?selected=${this.screenshotRegionMode === 'cursor'}>Around Cursor</option>
+                                    <option value="window" ?selected=${this.screenshotRegionMode === 'window'}>Active Window</option>
                                 </select>
-                                <div class="form-description">Capture a crop around cursor to reduce tokens</div>
+                                <div class="form-description">Choose which part of the screen to capture</div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Text-To-Speech</label>
