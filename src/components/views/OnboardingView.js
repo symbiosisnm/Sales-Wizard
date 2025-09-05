@@ -501,7 +501,7 @@ export class OnboardingView extends LitElement {
                                   </div>
                                   <div class="feature-item">
                                       <span class="feature-icon">📚</span>
-                                      Review conversation history
+                                      Manage conversation history (download or clear sessions)
                                   </div>
                                   <div class="feature-item">
                                       <span class="feature-icon">🔧</span>

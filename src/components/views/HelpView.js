@@ -453,6 +453,15 @@ export class HelpView extends LitElement {
                     </div>
                     <div class="description">The AI listens to conversations and provides contextual assistance based on what it hears.</div>
                 </div>
+
+                <div class="option-group">
+                    <div class="option-label">
+                        <span>History Management</span>
+                    </div>
+                    <div class="description">
+                        From the History view you can download individual sessions, clear all history, and choose how many sessions are stored.
+                    </div>
+                </div>
             </div>
         `;
     }

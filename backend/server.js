@@ -67,6 +67,17 @@ app.post('/history/:sessionId/turn', (req, res) => {
   }
 });
 
+// Clear all stored history sessions
+app.delete('/history', (_req, res) => {
+  try {
+    historyStore.clearHistory();
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Error clearing history:', err);
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
 app.get('/history', (req, res) => {
   try {
     const sessions = historyStore.listSessions();
@@ -87,6 +98,17 @@ app.get('/history/:sessionId', (req, res) => {
   } catch (err) {
     logger.error('Error loading session:', err);
     res.status(500).json({ error: 'Failed to load session' });
+  }
+});
+
+// Update maximum stored session count
+app.put('/history/limit', (req, res) => {
+  try {
+    historyStore.setMaxSessions(req.body?.limit);
+    res.json({ ok: true, limit: req.body?.limit });
+  } catch (err) {
+    logger.error('Error updating history limit:', err);
+    res.status(500).json({ error: 'Failed to update limit' });
   }
 });
 

@@ -108,8 +108,11 @@ By default the server listens on port 3001 (or the value of the `PORT` environme
 
 ### `/history`
 
-- `GET /history` – returns all saved conversation sessions, each containing a session ID and an ordered list of `{ timestamp, transcription, ai_response }` entries.
-- `POST /history` – append a conversation turn by posting JSON with `transcription` and `ai_response` fields.
+- `GET /history` – returns an array of saved conversation sessions (ID, timestamp, preview).
+- `GET /history/:sessionId` – returns the full conversation for a session.
+- `POST /history/:sessionId/turn` – append a conversation turn by posting JSON with `transcription` and `ai_response` fields.
+- `DELETE /history` – clears all stored conversation sessions.
+- `PUT /history/limit` – sets the maximum number of sessions to retain; older sessions are pruned automatically.
 
 ### `/context-params`
 
@@ -120,7 +123,7 @@ By default the server listens on port 3001 (or the value of the `PORT` environme
 
 ### History tab
 
-Accessible from the app header, the History tab lists past sessions on the left and shows the full transcript when a session is selected. Use the back button to return to the sessions list.
+Accessible from the app header, the History tab lists past sessions on the left and shows the full transcript when a session is selected. Use the back button to return to the sessions list, the download button to save a session, or the clear button to remove all history. The maximum number of stored sessions can be configured in Advanced settings.
 
 ### Context Parameters box
 

@@ -1,6 +1,8 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
 
+const API_BASE = 'http://localhost:3001';
+
 export class AdvancedView extends LitElement {
     static styles = css`
         * {
@@ -327,6 +329,7 @@ export class AdvancedView extends LitElement {
         maxTokensPerMin: { type: Number },
         throttleAtPercent: { type: Number },
         contentProtection: { type: Boolean },
+        historyLimit: { type: Number },
     };
 
     constructor() {
@@ -343,8 +346,12 @@ export class AdvancedView extends LitElement {
         // Content protection default
         this.contentProtection = true;
 
+        // History limit default
+        this.historyLimit = 50;
+
         this.loadRateLimitSettings();
         this.loadContentProtectionSetting();
+        this.loadHistoryLimit();
     }
 
     connectedCallback() {
@@ -489,6 +496,35 @@ export class AdvancedView extends LitElement {
         this.requestUpdate();
     }
 
+    // History limit methods
+    loadHistoryLimit() {
+        const limit = localStorage.getItem('historySessionLimit');
+        if (limit !== null) {
+            const parsed = parseInt(limit, 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                this.historyLimit = parsed;
+            }
+        }
+        this.updateHistoryLimit();
+    }
+
+    updateHistoryLimit() {
+        fetch(`${API_BASE}/history/limit`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: this.historyLimit }),
+        }).catch(err => logger.error('Failed to update history limit:', err));
+    }
+
+    handleHistoryLimitChange(e) {
+        const value = parseInt(e.target.value, 10);
+        if (!isNaN(value) && value > 0) {
+            this.historyLimit = value;
+            localStorage.setItem('historySessionLimit', this.historyLimit.toString());
+            this.updateHistoryLimit();
+        }
+    }
+
 
 
     render() {
@@ -522,6 +558,24 @@ export class AdvancedView extends LitElement {
                                 ? 'The application is currently invisible to screen sharing and recording software.' 
                                 : 'The application is currently visible to screen sharing and recording software.'}
                         </div>
+                    </div>
+                </div>
+
+                <!-- History Management Section -->
+                <div class="advanced-section">
+                    <div class="section-title">
+                        <span>🕒 History</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Stored Sessions</label>
+                        <input
+                            type="number"
+                            class="form-control"
+                            .value=${this.historyLimit}
+                            min="1"
+                            @input=${this.handleHistoryLimitChange}
+                        />
+                        <div class="form-description">Older sessions beyond this count will be removed automatically.</div>
                     </div>
                 </div>
 
