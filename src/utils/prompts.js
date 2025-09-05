@@ -201,7 +201,7 @@ Provide direct exam answers in **markdown format**. Include the question text, t
     },
 };
 
-function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
+function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true, contextParams = {}) {
     const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements];
 
     // Only add search usage section if Google Search is enabled
@@ -209,14 +209,27 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
         sections.push('\n\n', promptParts.searchUsage);
     }
 
+    if (contextParams.allowedSources || contextParams.toneLength || contextParams.disallowedTopics) {
+        sections.push('\n\n**CONTEXT PARAMETERS:**');
+        if (contextParams.allowedSources) {
+            sections.push(`\n- Allowed sources: ${contextParams.allowedSources}`);
+        }
+        if (contextParams.toneLength) {
+            sections.push(`\n- Tone/Length: ${contextParams.toneLength}`);
+        }
+        if (contextParams.disallowedTopics) {
+            sections.push(`\n- Disallowed topics: ${contextParams.disallowedTopics}`);
+        }
+    }
+
     sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', promptParts.outputInstructions);
 
     return sections.join('');
 }
 
-function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true) {
+function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true, contextParams = {}) {
     const promptParts = profilePrompts[profile] || profilePrompts.interview;
-    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled);
+    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled, contextParams);
 }
 
 module.exports = {

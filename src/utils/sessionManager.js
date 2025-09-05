@@ -69,7 +69,12 @@ async function initializeGeminiSession(
     const client = new GoogleGenAI({ vertexai: false, apiKey });
     const enabledTools = await getEnabledTools();
     const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
-    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
+    const contextParams = {
+        allowedSources: await module.exports.getStoredSetting('contextAllowedSources', ''),
+        toneLength: await module.exports.getStoredSetting('contextToneLength', ''),
+        disallowedTopics: await module.exports.getStoredSetting('contextDisallowedTopics', ''),
+    };
+    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, contextParams);
 
     if (!isReconnection) {
         conversationStore.initializeNewSession();

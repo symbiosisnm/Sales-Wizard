@@ -12,6 +12,11 @@ const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
+let contextParams = {
+    allowedSources: '',
+    toneLength: '',
+    disallowedTopics: '',
+};
 
 // Initialize random process names for stealth
 const randomNames = initializeRandomProcessNames();
@@ -98,6 +103,15 @@ function setupGeneralIpcHandlers() {
             logger.error('Error getting random display name:', error);
             return 'System Monitor';
         }
+    });
+
+    ipcMain.handle('set-context-params', async (_event, params) => {
+        contextParams = { ...contextParams, ...params };
+        return { success: true };
+    });
+
+    ipcMain.handle('get-context-params', async () => {
+        return { success: true, data: contextParams };
     });
 
     // Provide cursor position and display bounds for region screenshots
