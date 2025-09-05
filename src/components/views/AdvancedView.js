@@ -399,9 +399,8 @@ export class AdvancedView extends LitElement {
                 this.requestUpdate();
                 setTimeout(async () => {
                     // Close the entire application
-                    if (window.electron?.ipcRenderer) {
-                        const { ipcRenderer } = window.electron;
-                        await ipcRenderer.invoke('quit-application');
+                    if (window.electron?.quitApplication) {
+                        await window.electron.quitApplication();
                     }
                 }, 1000);
             }, 2000);
@@ -477,10 +476,9 @@ export class AdvancedView extends LitElement {
         localStorage.setItem('contentProtection', this.contentProtection.toString());
         
         // Update the window's content protection in real-time
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
+        if (window.electron?.updateContentProtection) {
             try {
-                await ipcRenderer.invoke('update-content-protection', this.contentProtection);
+                await window.electron.updateContentProtection(this.contentProtection);
             } catch (error) {
                 logger.error('Failed to update content protection:', error);
             }

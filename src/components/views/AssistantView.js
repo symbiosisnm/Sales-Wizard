@@ -445,9 +445,7 @@ export class AssistantView extends LitElement {
         this.loadFontSize();
 
         // Set up IPC listeners for keyboard shortcuts
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-
+        if (window.electron) {
             this.handlePreviousResponse = () => {
                 logger.info('Received navigate-previous-response message');
                 this.navigateToPreviousResponse();
@@ -468,10 +466,10 @@ export class AssistantView extends LitElement {
                 this.scrollResponseDown();
             };
 
-            ipcRenderer.on('navigate-previous-response', this.handlePreviousResponse);
-            ipcRenderer.on('navigate-next-response', this.handleNextResponse);
-            ipcRenderer.on('scroll-response-up', this.handleScrollUp);
-            ipcRenderer.on('scroll-response-down', this.handleScrollDown);
+            window.electron.onNavigatePreviousResponse?.(this.handlePreviousResponse);
+            window.electron.onNavigateNextResponse?.(this.handleNextResponse);
+            window.electron.onScrollResponseUp?.(this.handleScrollUp);
+            window.electron.onScrollResponseDown?.(this.handleScrollDown);
         }
     }
 
@@ -479,19 +477,18 @@ export class AssistantView extends LitElement {
         super.disconnectedCallback();
 
         // Clean up IPC listeners
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
+        if (window.electron) {
             if (this.handlePreviousResponse) {
-                ipcRenderer.removeListener('navigate-previous-response', this.handlePreviousResponse);
+                window.electron.removeNavigatePreviousResponse?.(this.handlePreviousResponse);
             }
             if (this.handleNextResponse) {
-                ipcRenderer.removeListener('navigate-next-response', this.handleNextResponse);
+                window.electron.removeNavigateNextResponse?.(this.handleNextResponse);
             }
             if (this.handleScrollUp) {
-                ipcRenderer.removeListener('scroll-response-up', this.handleScrollUp);
+                window.electron.removeScrollResponseUp?.(this.handleScrollUp);
             }
             if (this.handleScrollDown) {
-                ipcRenderer.removeListener('scroll-response-down', this.handleScrollDown);
+                window.electron.removeScrollResponseDown?.(this.handleScrollDown);
             }
         }
     }
