@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { getAppName } from '../../utils/appInfo.js';
 
 export class OnboardingView extends LitElement {
     static styles = css`
@@ -438,9 +439,9 @@ export class OnboardingView extends LitElement {
         const slides = [
             {
                 icon: 'assets/onboarding/welcome.svg',
-                title: 'Welcome to Cheating Daddy',
+                title: `Welcome to ${getAppName()}`,
                 content:
-                    'Your AI assistant that listens and watches, then provides intelligent suggestions automatically during interviews and meetings.',
+                    'Your AI sales assistant that listens and watches, delivering persuasive suggestions in real time to help you close more deals during interviews and meetings.',
             },
             {
                 icon: 'assets/onboarding/security.svg',
