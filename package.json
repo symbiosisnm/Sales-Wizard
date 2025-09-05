@@ -1,8 +1,8 @@
 {
   "name": "cheating-daddy",
-  "productName": "cheating-daddy",
+  "productName": "sales-wizard",
   "version": "0.4.0",
-  "description": "cheating daddy",
+  "description": "Sales Wizard",
   "main": "src/index.js",
   "scripts": {
     "start": "concurrently \"npm run start:backend\" \"npm run start:electron\"",
@@ -16,11 +16,11 @@
     "format": "prettier --write ."
   },
   "keywords": [
-    "cheating daddy",
-    "cheating daddy ai",
-    "cheating daddy ai assistant",
-    "cheating daddy ai assistant for interviews",
-    "cheating daddy ai assistant for interviews"
+    "sales wizard",
+    "sales wizard ai",
+    "sales wizard ai assistant",
+    "sales wizard ai assistant for interviews",
+    "sales wizard ai assistant for interviews"
   ],
   "author": {
     "name": "sohzm",
