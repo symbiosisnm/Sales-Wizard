@@ -1,4 +1,5 @@
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
+const fs = require('fs');
 const { saveDebugAudio } = require('../audioUtils');
 
 let systemAudioProc = null;
@@ -10,13 +11,24 @@ const VAD_SILENCE_SEND_MS = 2500;
 
 function killExistingSystemAudioDump() {
     return new Promise(resolve => {
-        const killProc = spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
-        killProc.on('close', () => resolve());
-        killProc.on('error', () => resolve());
-        setTimeout(() => {
-            killProc.kill();
+        exec('ps -ax -o pid= -o command=', (err, stdout) => {
+            if (!err) {
+                stdout
+                    .split('\n')
+                    .filter(line => line.includes('SystemAudioDump'))
+                    .forEach(line => {
+                        const pid = parseInt(line.trim().split(/\s+/)[0], 10);
+                        if (!Number.isNaN(pid) && pid !== process.pid) {
+                            try {
+                                process.kill(pid, 'SIGTERM');
+                            } catch {
+                                /* ignore */
+                            }
+                        }
+                    });
+            }
             resolve();
-        }, 2000);
+        });
     });
 }
 
@@ -34,6 +46,10 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
     }
 
+    if (!fs.existsSync(systemAudioPath)) {
+        throw new Error(`SystemAudioDump binary not found at ${systemAudioPath}`);
+    }
+
     const spawnOptions = {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PROCESS_NAME: 'AudioService', APP_NAME: 'System Audio Service' },
@@ -44,52 +60,78 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         spawnOptions.windowsHide = false;
     }
 
-    systemAudioProc = spawn(systemAudioPath, [], spawnOptions);
-    if (!systemAudioProc.pid) {
-        console.error('Failed to start SystemAudioDump');
-        return false;
-    }
+    return await new Promise((resolve, reject) => {
+        systemAudioProc = spawn(systemAudioPath, [], spawnOptions);
 
-    const CHUNK_DURATION = 0.1;
-    const SAMPLE_RATE = 24000;
-    const BYTES_PER_SAMPLE = 2;
-    const CHANNELS = 2;
-    const CHUNK_SIZE = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * CHUNK_DURATION;
+        if (!systemAudioProc || !systemAudioProc.pid) {
+            return reject(new Error('Failed to start SystemAudioDump'));
+        }
 
-    let audioBuffer = Buffer.alloc(0);
-
-    systemAudioProc.stdout.on('data', data => {
-        audioBuffer = Buffer.concat([audioBuffer, data]);
-        while (audioBuffer.length >= CHUNK_SIZE) {
-            const chunk = audioBuffer.slice(0, CHUNK_SIZE);
-            audioBuffer = audioBuffer.slice(CHUNK_SIZE);
-            const monoChunk = CHANNELS === 2 ? convertStereoToMono(chunk) : chunk;
-            const base64Data = monoChunk.toString('base64');
-            sendAudioToGemini(base64Data, geminiSessionRef);
-            if (process.env.DEBUG_AUDIO) {
-                saveDebugAudio(monoChunk, 'system_audio');
+        let settled = false;
+        const resolveOnce = v => {
+            if (!settled) {
+                settled = true;
+                resolve(v);
             }
-        }
-        const maxBufferSize = SAMPLE_RATE * BYTES_PER_SAMPLE * 1;
-        if (audioBuffer.length > maxBufferSize) {
-            audioBuffer = audioBuffer.slice(-maxBufferSize);
-        }
-    });
+        };
+        const rejectOnce = err => {
+            if (!settled) {
+                settled = true;
+                reject(err);
+            }
+        };
 
-    systemAudioProc.stderr.on('data', data => {
-        console.error('SystemAudioDump stderr:', data.toString());
-    });
+        systemAudioProc.once('error', err => {
+            systemAudioProc = null;
+            rejectOnce(new Error(`Failed to start SystemAudioDump: ${err.message}`));
+        });
 
-    systemAudioProc.on('close', () => {
-        systemAudioProc = null;
-    });
+        systemAudioProc.stderr.once('data', data => {
+            const message = data.toString();
+            console.error('SystemAudioDump stderr:', message);
+            try {
+                systemAudioProc.kill();
+            } catch {
+                /* ignore */
+            }
+            systemAudioProc = null;
+            rejectOnce(new Error(`SystemAudioDump stderr: ${message}`));
+        });
 
-    systemAudioProc.on('error', err => {
-        console.error('SystemAudioDump process error:', err);
-        systemAudioProc = null;
-    });
+        systemAudioProc.on('spawn', () => {
+            const CHUNK_DURATION = 0.1;
+            const SAMPLE_RATE = 24000;
+            const BYTES_PER_SAMPLE = 2;
+            const CHANNELS = 2;
+            const CHUNK_SIZE = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * CHUNK_DURATION;
 
-    return true;
+            let audioBuffer = Buffer.alloc(0);
+
+            systemAudioProc.stdout.on('data', data => {
+                audioBuffer = Buffer.concat([audioBuffer, data]);
+                while (audioBuffer.length >= CHUNK_SIZE) {
+                    const chunk = audioBuffer.slice(0, CHUNK_SIZE);
+                    audioBuffer = audioBuffer.slice(CHUNK_SIZE);
+                    const monoChunk = CHANNELS === 2 ? convertStereoToMono(chunk) : chunk;
+                    const base64Data = monoChunk.toString('base64');
+                    sendAudioToGemini(base64Data, geminiSessionRef);
+                    if (process.env.DEBUG_AUDIO) {
+                        saveDebugAudio(monoChunk, 'system_audio');
+                    }
+                }
+                const maxBufferSize = SAMPLE_RATE * BYTES_PER_SAMPLE * 1;
+                if (audioBuffer.length > maxBufferSize) {
+                    audioBuffer = audioBuffer.slice(-maxBufferSize);
+                }
+            });
+
+            systemAudioProc.on('close', () => {
+                systemAudioProc = null;
+            });
+
+            resolveOnce(true);
+        });
+    });
 }
 
 function convertStereoToMono(stereoBuffer) {

@@ -43,7 +43,7 @@ A real-time AI assistant that provides contextual help during video calls, inter
 
 ## Audio Capture
 
-- **macOS**: [SystemAudioDump](https://github.com/Mohammed-Yasin-Mulla/Sound) for system audio
+- **macOS**: [SystemAudioDump](https://github.com/Mohammed-Yasin-Mulla/Sound) for system audio. During development place the compiled `SystemAudioDump` binary in `src/assets/SystemAudioDump`. For packaged builds the binary must reside in the app's `resources` directory.
 - **Windows**: Loopback audio capture
 - **Linux**: Microphone input
 
