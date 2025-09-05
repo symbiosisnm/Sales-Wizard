@@ -1,6 +1,8 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
 
+const API_BASE = 'http://localhost:3001';
+
 export class HistoryView extends LitElement {
     static styles = css`
         * {
@@ -335,8 +337,9 @@ export class HistoryView extends LitElement {
 
     async loadSessions() {
         try {
-            this.loading = true;
-            this.sessions = await cheddar.getAllConversationSessions();
+        this.loading = true;
+        const response = await fetch(`${API_BASE}/history`);
+        this.sessions = await response.json();
         } catch (error) {
             logger.error('Error loading conversation sessions:', error);
             this.sessions = [];
@@ -372,18 +375,20 @@ export class HistoryView extends LitElement {
         });
     }
 
-    getSessionPreview(session) {
-        if (!session.conversationHistory || session.conversationHistory.length === 0) {
-            return 'No conversation yet';
-        }
-
-        const firstTurn = session.conversationHistory[0];
-        const preview = firstTurn.transcription || firstTurn.ai_response || 'Empty conversation';
-        return preview.length > 100 ? preview.substring(0, 100) + '...' : preview;
+    handleSessionClick(session) {
+        this.fetchSession(session.id);
     }
 
-    handleSessionClick(session) {
-        this.selectedSession = session;
+    async fetchSession(sessionId) {
+        try {
+            this.loading = true;
+            const res = await fetch(`${API_BASE}/history/${sessionId}`);
+            this.selectedSession = await res.json();
+        } catch (error) {
+            logger.error('Error loading session transcript:', error);
+        } finally {
+            this.loading = false;
+        }
     }
 
     handleBackClick() {
@@ -434,7 +439,7 @@ export class HistoryView extends LitElement {
                                 <div class="session-date">${this.formatDate(session.timestamp)}</div>
                                 <div class="session-time">${this.formatTime(session.timestamp)}</div>
                             </div>
-                            <div class="session-preview">${this.getSessionPreview(session)}</div>
+                            <div class="session-preview">${session.preview || 'No conversation yet'}</div>
                         </div>
                     `
                 )}
