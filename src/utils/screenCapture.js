@@ -3,10 +3,10 @@ export async function startScreenCapture({ intervalMs = 1000, quality = 'medium'
   let lastCursorPoint = null;
 
   function startCursorTracking() {
-    if (!window.electron?.ipcRenderer) return;
+    if (!window.electron?.getCursorPoint) return;
     const poll = async () => {
       try {
-        const res = await window.electron.ipcRenderer.invoke('get-cursor-point');
+        const res = await window.electron.getCursorPoint();
         if (res?.success) lastCursorPoint = res;
       } catch (_e) {
         /* ignore */

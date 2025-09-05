@@ -573,7 +573,7 @@ export class CustomizeView extends LitElement {
 
     updateContextParams() {
         try {
-            window.electron?.ipcRenderer?.invoke('set-context-params', {
+            window.electron?.setContextParams?.({
                 allowedSources: this.allowedSources,
                 toneLength: this.toneLength,
                 disallowedTopics: this.disallowedTopics,
@@ -656,9 +656,8 @@ export class CustomizeView extends LitElement {
     saveKeybinds() {
         localStorage.setItem('customKeybinds', JSON.stringify(this.keybinds));
         // Send to main process to update global shortcuts
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            ipcRenderer.send('update-keybinds', this.keybinds);
+        if (window.electron?.updateKeybinds) {
+            window.electron.updateKeybinds(this.keybinds);
         }
     }
 
@@ -672,9 +671,8 @@ export class CustomizeView extends LitElement {
         this.keybinds = this.getDefaultKeybinds();
         localStorage.removeItem('customKeybinds');
         this.requestUpdate();
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            ipcRenderer.send('update-keybinds', this.keybinds);
+        if (window.electron?.updateKeybinds) {
+            window.electron.updateKeybinds(this.keybinds);
         }
     }
 
@@ -834,10 +832,9 @@ export class CustomizeView extends LitElement {
         localStorage.setItem('googleSearchEnabled', this.googleSearchEnabled.toString());
 
         // Notify main process if available
-        if (window.electron?.ipcRenderer) {
+        if (window.electron?.updateGoogleSearchSetting) {
             try {
-                const { ipcRenderer } = window.electron;
-                await ipcRenderer.invoke('update-google-search-setting', this.googleSearchEnabled);
+                await window.electron.updateGoogleSearchSetting(this.googleSearchEnabled);
             } catch (error) {
                 logger.error('Failed to notify main process:', error);
             }

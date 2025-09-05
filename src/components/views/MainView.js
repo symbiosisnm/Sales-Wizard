@@ -163,7 +163,7 @@ export class MainView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
-        window.electron?.ipcRenderer?.on('session-initializing', (event, isInitializing) => {
+        window.electron?.onSessionInitializing?.((event, isInitializing) => {
             this.isInitializing = isInitializing;
         });
 
@@ -178,7 +178,7 @@ export class MainView extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
-        window.electron?.ipcRenderer?.removeAllListeners('session-initializing');
+        window.electron?.removeSessionInitializingListeners?.();
         // Remove keyboard event listener
         document.removeEventListener('keydown', this.boundKeydownHandler);
     }
@@ -197,9 +197,8 @@ export class MainView extends LitElement {
         const value = e.target.value;
         // Prefer secure store via IPC, fallback to localStorage
         try {
-            const { ipcRenderer } = window.require?.('electron') || {};
-            if (ipcRenderer) {
-                await ipcRenderer.invoke('secure-set-api-key', value);
+            if (window.electron?.secureSetApiKey) {
+                await window.electron.secureSetApiKey(value);
             } else {
                 localStorage.setItem('apiKey', value);
             }
@@ -214,9 +213,8 @@ export class MainView extends LitElement {
 
     async firstUpdated() {
         try {
-            const { ipcRenderer } = window.require?.('electron') || {};
-            if (ipcRenderer) {
-                const res = await ipcRenderer.invoke('secure-get-api-key');
+            if (window.electron?.secureGetApiKey) {
+                const res = await window.electron.secureGetApiKey();
                 if (res?.success && res.value) {
                     const input = this.renderRoot?.querySelector('input[type="password"]');
                     if (input) input.value = res.value;

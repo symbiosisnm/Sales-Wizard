@@ -163,17 +163,19 @@ export class CheatingDaddyApp extends LitElement {
         super.connectedCallback();
 
         // Set up IPC listeners if available
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            ipcRenderer.on('update-response', (_, response) => {
+        if (window.electron) {
+            this._updateResponseHandler = (_, response) => {
                 this.setResponse(response);
-            });
-            ipcRenderer.on('update-status', (_, status) => {
+            };
+            this._updateStatusHandler = (_, status) => {
                 this.setStatus(status);
-            });
-            ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
+            };
+            this._clickThroughHandler = (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
-            });
+            };
+            window.electron.onUpdateResponse?.(this._updateResponseHandler);
+            window.electron.onUpdateStatus?.(this._updateStatusHandler);
+            window.electron.onClickThroughToggled?.(this._clickThroughHandler);
         }
 
         // Start the voice assistant to listen for spoken questions and
@@ -232,11 +234,10 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         super.disconnectedCallback();
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            ipcRenderer.removeAllListeners('update-response');
-            ipcRenderer.removeAllListeners('update-status');
-            ipcRenderer.removeAllListeners('click-through-toggled');
+        if (window.electron) {
+            window.electron.removeUpdateResponseListener?.(this._updateResponseHandler);
+            window.electron.removeUpdateStatusListener?.(this._updateStatusHandler);
+            window.electron.removeClickThroughToggledListener?.(this._clickThroughHandler);
         }
     }
 
@@ -328,26 +329,23 @@ export class CheatingDaddyApp extends LitElement {
             cheddar.stopCapture();
 
             // Close the session
-            if (window.electron?.ipcRenderer) {
-                const { ipcRenderer } = window.electron;
-                await ipcRenderer.invoke('close-session');
+            if (window.electron?.closeSession) {
+                await window.electron.closeSession();
             }
             this.sessionActive = false;
             this.currentView = 'main';
             logger.info('Session closed');
         } else {
             // Quit the entire application
-            if (window.electron?.ipcRenderer) {
-                const { ipcRenderer } = window.electron;
-                await ipcRenderer.invoke('quit-application');
+            if (window.electron?.quitApplication) {
+                await window.electron.quitApplication();
             }
         }
     }
 
     async handleHideToggle() {
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            await ipcRenderer.invoke('toggle-window-visibility');
+        if (window.electron?.toggleWindowVisibility) {
+            await window.electron.toggleWindowVisibility();
         }
     }
 
@@ -374,9 +372,8 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async handleAPIKeyHelp() {
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            await ipcRenderer.invoke('open-external', 'https://cheatingdaddy.com/help/api-key');
+        if (window.electron?.openExternal) {
+            await window.electron.openExternal('https://cheatingdaddy.com/help/api-key');
         }
     }
 
@@ -410,9 +407,8 @@ export class CheatingDaddyApp extends LitElement {
 
     // Help view event handlers
     async handleExternalLinkClick(url) {
-        if (window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            await ipcRenderer.invoke('open-external', url);
+        if (window.electron?.openExternal) {
+            await window.electron.openExternal(url);
         }
     }
 
@@ -444,9 +440,8 @@ export class CheatingDaddyApp extends LitElement {
         super.updated(changedProperties);
 
         // Only notify main process of view change if the view actually changed
-        if (changedProperties.has('currentView') && window.electron?.ipcRenderer) {
-            const { ipcRenderer } = window.electron;
-            ipcRenderer.send('view-changed', this.currentView);
+        if (changedProperties.has('currentView') && window.electron?.viewChanged) {
+            window.electron.viewChanged(this.currentView);
 
             // Add a small delay to smooth out the transition
             const viewContainer = this.shadowRoot?.querySelector('.view-container');
@@ -591,10 +586,9 @@ export class CheatingDaddyApp extends LitElement {
         this.updateLayoutMode();
 
         // Notify main process about layout change for window resizing
-        if (window.electron?.ipcRenderer) {
+        if (window.electron?.updateSizes) {
             try {
-                const { ipcRenderer } = window.electron;
-                await ipcRenderer.invoke('update-sizes');
+                await window.electron.updateSizes();
             } catch (error) {
                 logger.error('Failed to update sizes in main process:', error);
             }
