@@ -9,9 +9,11 @@ const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = requir
 const { registerSecureStoreIpc } = require('./utils/secureStore');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
 const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
+const conversationStore = require('./utils/conversationStore');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
+let storedContext = '';
 
 // Initialize random process names for stealth
 const randomNames = initializeRandomProcessNames();
@@ -97,6 +99,76 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             logger.error('Error getting random display name:', error);
             return 'System Monitor';
+        }
+    });
+
+    // Conversation history handlers
+    ipcMain.handle('history:list', async () => {
+        try {
+            const data = conversationStore.getCurrentSessionData();
+            if (!data.sessionId) {
+                return [];
+            }
+            return [
+                {
+                    sessionId: data.sessionId,
+                    timestamp: parseInt(data.sessionId),
+                    conversationHistory: data.history,
+                },
+            ];
+        } catch (error) {
+            logger.error('Error listing history:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('history:get', async (_event, sessionId) => {
+        try {
+            const data = conversationStore.getCurrentSessionData();
+            if (data.sessionId === sessionId) {
+                return {
+                    sessionId: data.sessionId,
+                    timestamp: parseInt(data.sessionId),
+                    conversationHistory: data.history,
+                };
+            }
+            return null;
+        } catch (error) {
+            logger.error('Error getting history session:', error);
+            return null;
+        }
+    });
+
+    // User context handlers
+    ipcMain.handle('context:get', async () => {
+        try {
+            if (storedContext) {
+                return storedContext;
+            }
+            if (mainWindow) {
+                storedContext = await mainWindow.webContents.executeJavaScript(
+                    'localStorage.getItem("customPrompt") || ""'
+                );
+            }
+            return storedContext;
+        } catch (error) {
+            logger.error('Error getting context:', error);
+            return '';
+        }
+    });
+
+    ipcMain.handle('context:set', async (_event, value) => {
+        try {
+            storedContext = value || '';
+            if (mainWindow) {
+                await mainWindow.webContents.executeJavaScript(
+                    `localStorage.setItem('customPrompt', ${JSON.stringify(storedContext)})`
+                );
+            }
+            return true;
+        } catch (error) {
+            logger.error('Error setting context:', error);
+            return false;
         }
     });
 

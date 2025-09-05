@@ -9,4 +9,14 @@ const ipc = {
     removeAllListeners: channel => ipcRenderer.removeAllListeners(channel),
 };
 
-contextBridge.exposeInMainWorld('electron', { ipcRenderer: ipc });
+contextBridge.exposeInMainWorld('electron', {
+    ipcRenderer: ipc,
+    history: {
+        list: () => ipcRenderer.invoke('history:list'),
+        get: id => ipcRenderer.invoke('history:get', id),
+    },
+    context: {
+        get: () => ipcRenderer.invoke('context:get'),
+        set: value => ipcRenderer.invoke('context:set', value),
+    },
+});

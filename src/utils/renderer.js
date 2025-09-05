@@ -192,6 +192,30 @@ async function createPcmWorkletNode(ctx, onChunk) {
     }
 }
 
+async function getContext() {
+    if (window.electron?.context) {
+        try {
+            return await window.electron.context.get();
+        } catch (_e) {
+            return localStorage.getItem('customPrompt') || '';
+        }
+    }
+    return localStorage.getItem('customPrompt') || '';
+}
+
+async function setContext(value) {
+    if (window.electron?.context) {
+        try {
+            await window.electron.context.set(value);
+            return;
+        } catch (_e) {
+            localStorage.setItem('customPrompt', value);
+            return;
+        }
+    }
+    localStorage.setItem('customPrompt', value);
+}
+
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     let apiKey = null;
     try {
@@ -204,7 +228,8 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
         apiKey = localStorage.getItem('apiKey')?.trim();
     }
     if (apiKey) {
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, localStorage.getItem('customPrompt') || '', profile, language);
+        const customPrompt = await getContext();
+        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, customPrompt || '', profile, language);
         if (success) {
             cheddar.setStatus('Live');
         } else {
@@ -875,6 +900,15 @@ async function saveConversationSession(sessionId, conversationHistory) {
 }
 
 async function getConversationSession(sessionId) {
+    if (window.electron?.history) {
+        try {
+            return await window.electron.history.get(sessionId);
+        } catch (error) {
+            logger.error('Error fetching conversation session via IPC:', error);
+            return null;
+        }
+    }
+
     if (!conversationDB) {
         await initConversationStorage();
     }
@@ -890,6 +924,16 @@ async function getConversationSession(sessionId) {
 }
 
 async function getAllConversationSessions() {
+    if (window.electron?.history) {
+        try {
+            const sessions = await window.electron.history.list();
+            return sessions || [];
+        } catch (error) {
+            logger.error('Error listing conversation sessions via IPC:', error);
+            return [];
+        }
+    }
+
     if (!conversationDB) {
         await initConversationStorage();
     }
@@ -958,6 +1002,10 @@ const cheddar = {
     stopCapture,
     sendTextMessage,
     handleShortcut,
+
+    // Context helpers
+    getContext,
+    setContext,
 
     // Conversation history functions
     getAllConversationSessions,
