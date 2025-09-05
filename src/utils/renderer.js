@@ -246,8 +246,8 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             logger.info('Starting macOS capture with SystemAudioDump...');
 
-            // Start macOS audio capture
-            const audioResult = await ipcRenderer.invoke('start-macos-audio');
+            // Start system audio capture via main process
+            const audioResult = await ipcRenderer.invoke('start-system-audio');
             if (!audioResult.success) {
                 throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
             }
@@ -791,7 +791,7 @@ function stopCapture() {
 
     // Stop macOS audio capture if running
     if (isMacOS) {
-        ipcRenderer.invoke('stop-macos-audio').catch(err => {
+        ipcRenderer.invoke('stop-system-audio').catch(err => {
             logger.error('Error stopping macOS audio:', err);
         });
     }

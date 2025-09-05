@@ -12,8 +12,8 @@ require.cache[require.resolve('electron')] = { exports: { ipcMain } };
 
 // Mock dependencies
 const audioHandler = {
-    stopMacOSAudioCapture: mock.fn(),
-    startMacOSAudioCapture: mock.fn(),
+    stopSystemAudioCapture: mock.fn(),
+    startSystemAudioCapture: mock.fn(),
 };
 require.cache[require.resolve('../audioHandler')] = { exports: audioHandler };
 
@@ -65,7 +65,7 @@ test('initialize-gemini returns false on failure', async () => {
 
 test('close-session clears session and stops audio', async () => {
     handlers = {};
-    audioHandler.stopMacOSAudioCapture = mock.fn();
+    audioHandler.stopSystemAudioCapture = mock.fn();
     reconnection.clearSessionParams = mock.fn();
     const geminiSessionRef = { current: { close: mock.fn(async () => {}) } };
     gemini.setupGeminiIpcHandlers(geminiSessionRef);
@@ -74,13 +74,13 @@ test('close-session clears session and stops audio', async () => {
 
     assert.strictEqual(result.success, true);
     assert.strictEqual(geminiSessionRef.current, null);
-    assert.strictEqual(audioHandler.stopMacOSAudioCapture.mock.callCount(), 1);
+    assert.strictEqual(audioHandler.stopSystemAudioCapture.mock.callCount(), 1);
     assert.strictEqual(reconnection.clearSessionParams.mock.callCount(), 1);
 });
 
 test('close-session handles close errors', async () => {
     handlers = {};
-    audioHandler.stopMacOSAudioCapture = mock.fn();
+    audioHandler.stopSystemAudioCapture = mock.fn();
     reconnection.clearSessionParams = mock.fn();
     const geminiSessionRef = { current: { close: mock.fn(async () => { throw new Error('boom'); }) } };
     gemini.setupGeminiIpcHandlers(geminiSessionRef);

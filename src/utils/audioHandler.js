@@ -8,6 +8,12 @@ const VAD_THRESHOLD = 900;
 const VAD_HYSTERESIS = 200;
 const VAD_SILENCE_SEND_MS = 2500;
 
+const CHUNK_DURATION = 0.1;
+const SAMPLE_RATE = 24000;
+const BYTES_PER_SAMPLE = 2;
+const CHANNELS = 2;
+const CHUNK_SIZE = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * CHUNK_DURATION;
+
 function killExistingSystemAudioDump() {
     return new Promise(resolve => {
         const killProc = spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
@@ -37,12 +43,9 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     const spawnOptions = {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PROCESS_NAME: 'AudioService', APP_NAME: 'System Audio Service' },
+        detached: false,
+        windowsHide: false,
     };
-
-    if (process.platform === 'darwin') {
-        spawnOptions.detached = false;
-        spawnOptions.windowsHide = false;
-    }
 
     systemAudioProc = spawn(systemAudioPath, [], spawnOptions);
     if (!systemAudioProc.pid) {
@@ -50,12 +53,34 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         return false;
     }
 
-    const CHUNK_DURATION = 0.1;
-    const SAMPLE_RATE = 24000;
-    const BYTES_PER_SAMPLE = 2;
-    const CHANNELS = 2;
-    const CHUNK_SIZE = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * CHUNK_DURATION;
+    setupPcmPipeline(geminiSessionRef, 'SystemAudioDump');
+    return true;
+}
 
+function startWindowsAudioCapture(geminiSessionRef) {
+    const args = ['-f', 'wasapi', '-i', 'default', '-ac', String(CHANNELS), '-ar', String(SAMPLE_RATE), '-f', 's16le', '-'];
+    systemAudioProc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    if (!systemAudioProc.pid) {
+        logger.error('Failed to start ffmpeg for WASAPI');
+        return false;
+    }
+    setupPcmPipeline(geminiSessionRef, 'ffmpeg (WASAPI)');
+    return true;
+}
+
+function startLinuxAudioCapture(geminiSessionRef) {
+    const backend = process.env.LINUX_AUDIO_BACKEND === 'pipewire' ? 'pipewire' : 'pulse';
+    const args = ['-f', backend, '-i', 'default', '-ac', String(CHANNELS), '-ar', String(SAMPLE_RATE), '-f', 's16le', '-'];
+    systemAudioProc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    if (!systemAudioProc.pid) {
+        logger.error('Failed to start ffmpeg for Linux audio');
+        return false;
+    }
+    setupPcmPipeline(geminiSessionRef, `ffmpeg (${backend})`);
+    return true;
+}
+
+function setupPcmPipeline(geminiSessionRef, label) {
     let audioBuffer = Buffer.alloc(0);
 
     systemAudioProc.stdout.on('data', data => {
@@ -77,7 +102,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     });
 
     systemAudioProc.stderr.on('data', data => {
-        logger.error('SystemAudioDump stderr:', data.toString());
+        logger.error(`${label} stderr:`, data.toString());
     });
 
     systemAudioProc.on('close', () => {
@@ -85,11 +110,24 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     });
 
     systemAudioProc.on('error', err => {
-        logger.error('SystemAudioDump process error:', err);
+        logger.error(`${label} process error:`, err);
         systemAudioProc = null;
     });
+}
 
-    return true;
+async function startSystemAudioCapture(geminiSessionRef) {
+    await stopSystemAudioCapture();
+    if (process.platform === 'darwin') {
+        return startMacOSAudioCapture(geminiSessionRef);
+    }
+    if (process.platform === 'win32') {
+        return startWindowsAudioCapture(geminiSessionRef);
+    }
+    if (process.platform === 'linux') {
+        return startLinuxAudioCapture(geminiSessionRef);
+    }
+    logger.warn(`System audio capture not supported on ${process.platform}`);
+    return false;
 }
 
 function convertStereoToMono(stereoBuffer) {
@@ -102,7 +140,7 @@ function convertStereoToMono(stereoBuffer) {
     return monoBuffer;
 }
 
-function stopMacOSAudioCapture() {
+function stopSystemAudioCapture() {
     if (systemAudioProc) {
         systemAudioProc.kill('SIGTERM');
         systemAudioProc = null;
@@ -147,9 +185,9 @@ function computeEnergyFromBase64Pcm16(base64Data) {
 
 module.exports = {
     killExistingSystemAudioDump,
-    startMacOSAudioCapture,
+    startSystemAudioCapture,
     convertStereoToMono,
-    stopMacOSAudioCapture,
+    stopSystemAudioCapture,
     sendAudioToGemini,
     computeEnergyFromBase64Pcm16,
 };

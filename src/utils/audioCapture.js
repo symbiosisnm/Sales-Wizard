@@ -95,7 +95,7 @@ async function startMicrophoneCapture({ deviceId, sampleRate, channels }) {
     return { stop, stream: pcmStream };
 }
 
-async function startSystemCaptureMac(pcmStream) {
+async function startSystemCapture(pcmStream) {
     const geminiSessionRef = {
         current: {
             sendRealtimeInput: async ({ audio }) => {
@@ -104,25 +104,12 @@ async function startSystemCaptureMac(pcmStream) {
             },
         },
     };
-    const ok = await audioHandler.startMacOSAudioCapture(geminiSessionRef);
+    const ok = await audioHandler.startSystemAudioCapture(geminiSessionRef);
     if (!ok) {
-        throw new Error('Failed to start macOS system audio capture');
+        throw new Error('Failed to start system audio capture');
     }
     return () => {
-        audioHandler.stopMacOSAudioCapture();
-        pcmStream.end();
-    };
-}
-
-async function startSystemCaptureStub(pcmStream, platform) {
-    if (globalThis.logger?.warn) {
-        if (platform === 'win32') {
-            logger.warn('System audio capture using WASAPI is not implemented');
-        } else {
-            logger.warn('System audio capture using PulseAudio is not implemented');
-        }
-    }
-    return () => {
+        audioHandler.stopSystemAudioCapture();
         pcmStream.end();
     };
 }
@@ -133,14 +120,7 @@ async function startAudioCapture({ source = 'microphone', deviceId = null, sampl
     }
 
     const pcmStream = new PassThrough();
-    let stop;
-    if (process.platform === 'darwin') {
-        stop = await startSystemCaptureMac(pcmStream);
-    } else if (process.platform === 'win32') {
-        stop = await startSystemCaptureStub(pcmStream, 'win32');
-    } else {
-        stop = await startSystemCaptureStub(pcmStream, 'linux');
-    }
+    const stop = await startSystemCapture(pcmStream);
     return { stop, stream: pcmStream };
 }
 

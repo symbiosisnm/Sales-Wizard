@@ -43,9 +43,17 @@ A real-time AI assistant that provides contextual help during video calls, inter
 
 ## Audio Capture
 
-- **macOS**: [SystemAudioDump](https://github.com/Mohammed-Yasin-Mulla/Sound) for system audio
-- **Windows**: Loopback audio capture
-- **Linux**: Microphone input
+- **macOS**: [SystemAudioDump](https://github.com/Mohammed-Yasin-Mulla/Sound) (bundled) for system audio
+- **Windows**: WASAPI loopback capture via `ffmpeg`
+- **Linux**: PulseAudio/PipeWire capture via `ffmpeg`
+
+### System Audio Binaries
+
+The application relies on external binaries to capture system audio:
+
+- **macOS** – `SystemAudioDump` is included in `src/assets` and packaged with the app.
+- **Windows** – Install [ffmpeg](https://ffmpeg.org/download.html) and ensure `ffmpeg.exe` is available in your `PATH`.
+- **Linux** – Install `ffmpeg` using your distribution's package manager. PulseAudio is used by default; set `LINUX_AUDIO_BACKEND=pipewire` to capture via PipeWire.
 
 ## Requirements
 
@@ -63,9 +71,10 @@ requirements and configuration for this feature.
 ### Audio Requirements
 
 - A working microphone is required for live audio capture.
-- Optional system audio streaming on macOS relies on the
-  [`SystemAudioDump`](https://github.com/Mohammed-Yasin-Mulla/Sound) binary. If
-  the tool is missing, install it and ensure it is in your `PATH`.
+- Optional system audio streaming requires platform-specific binaries:
+  - **macOS** uses the bundled [`SystemAudioDump`](https://github.com/Mohammed-Yasin-Mulla/Sound).
+  - **Windows** and **Linux** rely on `ffmpeg` being available in your `PATH`.
+    Linux defaults to PulseAudio; set `LINUX_AUDIO_BACKEND=pipewire` to use PipeWire.
 
 ### Screen Capture
 
@@ -130,5 +139,7 @@ During onboarding or customization, a text area labeled "Context Parameters" all
 
 - **`SystemAudioDump` not found (macOS):** Install the binary and verify it is
   accessible via your `PATH`. Without it, system audio cannot be captured.
+- **`ffmpeg` not found (Windows/Linux):** Install `ffmpeg` and ensure it is available
+  in your `PATH` so system audio capture can initialize.
 - **Clear local cache:** Remove the application's local data (for example, via the "Clear Data" option or by clearing `localStorage`) if sessions or settings appear out of sync.
 - **Offline mode:** History and context synchronization require network access. If you lose connectivity, the app operates in a degraded offline mode; restore your connection and restart the session to resume normal operation.
