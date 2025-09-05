@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { getAppName } from '../../utils/config.js';
 
 export class AppHeader extends LitElement {
     static styles = css`
@@ -101,6 +102,7 @@ export class AppHeader extends LitElement {
         isClickThrough: { type: Boolean, reflect: true },
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
+        appName: { type: String },
     };
 
     constructor() {
@@ -117,17 +119,21 @@ export class AppHeader extends LitElement {
         this.isClickThrough = false;
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
+        this.appName = getAppName();
         this._timerInterval = null;
+        this._appNameInterval = null;
     }
 
     connectedCallback() {
         super.connectedCallback();
         this._startTimer();
+        this._startAppNameWatcher();
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._stopTimer();
+        this._stopAppNameWatcher();
     }
 
     updated(changedProperties) {
@@ -172,17 +178,34 @@ export class AppHeader extends LitElement {
         }
     }
 
+    _startAppNameWatcher() {
+        this._stopAppNameWatcher();
+        this._appNameInterval = setInterval(() => {
+            const name = getAppName();
+            if (name !== this.appName) {
+                this.appName = name;
+            }
+        }, 1000);
+    }
+
+    _stopAppNameWatcher() {
+        if (this._appNameInterval) {
+            clearInterval(this._appNameInterval);
+            this._appNameInterval = null;
+        }
+    }
+
     getViewTitle() {
         const titles = {
-            onboarding: 'Welcome to Cheating Daddy',
-            main: 'Cheating Daddy',
+            onboarding: `Welcome to ${this.appName}`,
+            main: this.appName,
             customize: 'Customize',
             help: 'Help & Shortcuts',
             history: 'Conversation History',
             advanced: 'Advanced Tools',
-            assistant: 'Cheating Daddy',
+            assistant: this.appName,
         };
-        return titles[this.currentView] || 'Cheating Daddy';
+        return titles[this.currentView] || this.appName;
     }
 
     getElapsedTime() {
