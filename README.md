@@ -53,3 +53,46 @@ A real-time AI assistant that provides contextual help during video calls, inter
 - Gemini API key
 - Screen recording permissions
 - Microphone/audio permissions
+
+## Real-Time Streaming
+
+Cheating Daddy can stream microphone audio and periodic screen captures to a
+backend for live model interaction. The following sections outline the
+requirements and configuration for this feature.
+
+### Audio Requirements
+
+- A working microphone is required for live audio capture.
+- Optional system audio streaming on macOS relies on the
+  [`SystemAudioDump`](https://github.com/Mohammed-Yasin-Mulla/Sound) binary. If
+  the tool is missing, install it and ensure it is in your `PATH`.
+
+### Screen Capture
+
+- Grant screen-recording permissions to the application when prompted.
+- By default, the screen is captured at **1 frame per second** as JPEG images
+  using the browser's default quality settings.
+
+### Configuration
+
+#### Environment Variables
+
+| Variable         | Description                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Cheating Daddy`.              |
+| `AUTH_TOKEN`     | Secret token required by the backend to authorize live streaming connections.               |
+| `ALLOWED_ORIGINS`| Comma-separated list of origins permitted to open live WebSocket connections.               |
+
+#### IPC Channels
+
+| Channel               | Direction            | Description                                   |
+| --------------------- | -------------------- | --------------------------------------------- |
+| `start-live-stream`   | Renderer → Main      | Begin capturing audio and screen frames.      |
+| `stop-live-stream`    | Renderer → Main      | Stop the active live streaming session.       |
+| `live-stream-status`  | Main → Renderer      | Emits updates about streaming status changes. |
+| `live-stream-error`   | Main → Renderer      | Reports errors encountered during streaming.  |
+
+### Troubleshooting
+
+- **`SystemAudioDump` not found (macOS):** Install the binary and verify it is
+  accessible via your `PATH`. Without it, system audio cannot be captured.
