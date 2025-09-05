@@ -92,7 +92,43 @@ requirements and configuration for this feature.
 | `live-stream-status`  | Main → Renderer      | Emits updates about streaming status changes. |
 | `live-stream-error`   | Main → Renderer      | Reports errors encountered during streaming.  |
 
+## Backend History Server
+
+The application persists conversation history and user-provided context through a lightweight Express server. Start the server independently for development or debugging:
+
+```bash
+node backend/server.js
+# or via npm script
+npm run start:backend
+```
+
+By default the server listens on port 3001 (or the value of the `PORT` environment variable).
+
+## API Endpoints
+
+### `/history`
+
+- `GET /history` – returns all saved conversation sessions, each containing a session ID and an ordered list of `{ timestamp, transcription, ai_response }` entries.
+- `POST /history` – append a conversation turn by posting JSON with `transcription` and `ai_response` fields.
+
+### `/context-params`
+
+- `GET /context-params` – retrieves the current context parameters used to prime the model.
+- `POST /context-params` – replace the stored context parameters. Provide `{ params: "..." }` in the request body.
+
+## UI Walkthrough
+
+### History tab
+
+Accessible from the app header, the History tab lists past sessions on the left and shows the full transcript when a session is selected. Use the back button to return to the sessions list.
+
+### Context Parameters box
+
+During onboarding or customization, a text area labeled "Context Parameters" allows you to paste résumé details, job descriptions, or other relevant context. The content is saved locally and sent with every new session.
+
 ### Troubleshooting
 
 - **`SystemAudioDump` not found (macOS):** Install the binary and verify it is
   accessible via your `PATH`. Without it, system audio cannot be captured.
+- **Clear local cache:** Remove the application's local data (for example, via the "Clear Data" option or by clearing `localStorage`) if sessions or settings appear out of sync.
+- **Offline mode:** History and context synchronization require network access. If you lose connectivity, the app operates in a degraded offline mode; restore your connection and restart the session to resume normal operation.
