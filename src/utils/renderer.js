@@ -242,15 +242,14 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 
     try {
+        // Open live session and start capture services in main process
+        await ipcRenderer.invoke('live-open');
+        await ipcRenderer.invoke('audio-start');
+        await ipcRenderer.invoke('screen-start');
+
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             logger.info('Starting macOS capture with SystemAudioDump...');
-
-            // Start macOS audio capture
-            const audioResult = await ipcRenderer.invoke('start-macos-audio');
-            if (!audioResult.success) {
-                throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
-            }
 
             // Get screen capture for screenshots
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -377,7 +376,7 @@ async function setupLinuxMicProcessing(micStream) {
 
     const workletNode = await createPcmWorkletNode(micAudioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await ipcRenderer.invoke('send-audio-content', {
+        await ipcRenderer.invoke('live-send-audio', {
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -404,7 +403,7 @@ async function setupLinuxMicProcessing(micStream) {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
+            await ipcRenderer.invoke('live-send-audio', {
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -423,7 +422,7 @@ async function setupLinuxSystemAudioProcessing() {
 
     const node = await createPcmWorkletNode(audioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await ipcRenderer.invoke('send-audio-content', {
+        await ipcRenderer.invoke('live-send-audio', {
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -450,7 +449,7 @@ async function setupLinuxSystemAudioProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
+            await ipcRenderer.invoke('live-send-audio', {
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -468,7 +467,7 @@ async function setupWindowsLoopbackProcessing() {
 
     const node = await createPcmWorkletNode(audioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await ipcRenderer.invoke('send-audio-content', {
+        await ipcRenderer.invoke('live-send-audio', {
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -495,7 +494,7 @@ async function setupWindowsLoopbackProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
+            await ipcRenderer.invoke('live-send-audio', {
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -525,7 +524,7 @@ async function enableMicStreaming() {
 
         const node = await createPcmWorkletNode(pttMicContext, async bytes => {
             const base64Data = arrayBufferToBase64(bytes.buffer);
-            await ipcRenderer.invoke('send-audio-content', {
+            await ipcRenderer.invoke('live-send-audio', {
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -545,7 +544,7 @@ async function enableMicStreaming() {
                     const chunk = micBuf.splice(0, samplesPerChunk);
                     const pcm16 = convertFloat32ToInt16(chunk);
                     const base64Data = arrayBufferToBase64(pcm16.buffer);
-                    await ipcRenderer.invoke('send-audio-content', {
+                    await ipcRenderer.invoke('live-send-audio', {
                         data: base64Data,
                         mimeType: 'audio/pcm;rate=24000',
                     });
@@ -698,7 +697,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                     }
 
                     try {
-                        const result = await ipcRenderer.invoke('send-image-content', {
+                        const result = await ipcRenderer.invoke('live-send-image', {
                             data: base64data,
                         });
 
