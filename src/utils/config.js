@@ -1,22 +1,22 @@
 /**
  * Utility helpers for accessing configuration values across
  * both the main and renderer processes.
+ *
+ * Environment variables are captured at module load time so that
+ * renderer processes can safely access them without exposing the
+ * entire `process.env` object.
  */
 
-function getEnvVar(key, defaultValue) {
-    if (
-        typeof process !== 'undefined' &&
-        process.env &&
-        Object.prototype.hasOwnProperty.call(process.env, key)
-    ) {
-        return process.env[key];
+const env = (() => {
+    if (typeof process !== 'undefined' && process.env) {
+        return { ...process.env };
     }
-    if (
-        typeof window !== 'undefined' &&
-        window.env &&
-        Object.prototype.hasOwnProperty.call(window.env, key)
-    ) {
-        return window.env[key];
+    return {};
+})();
+
+function getEnvVar(key, defaultValue) {
+    if (Object.prototype.hasOwnProperty.call(env, key)) {
+        return env[key];
     }
     return defaultValue;
 }
