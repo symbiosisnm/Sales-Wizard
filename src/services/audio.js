@@ -1,5 +1,5 @@
 /**
- * Audio transcription service for Cheating Daddy.
+ * Audio transcription service for Sales Wizard.
  * Uses the Web Speech API when available, otherwise records a short
  * snippet from the microphone and sends it to either a local model or
  * the Gemini API for transcription.

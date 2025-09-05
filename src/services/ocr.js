@@ -1,5 +1,5 @@
 /**
- * OCR service for Cheating Daddy.
+ * OCR service for Sales Wizard.
  * Accepts a base64-encoded PNG and returns recognized text using Tesseract.js.
  */
 export async function ocrBase64(base64) {

@@ -1,5 +1,5 @@
 /*
- * Voice assistant helper for Cheating Daddy.
+ * Voice assistant helper for Sales Wizard.
  *
  * This module provides a simple wrapper around the browser's Web Speech
  * API (SpeechRecognition) to continuously listen for speech, convert it
