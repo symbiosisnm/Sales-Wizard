@@ -52,6 +52,10 @@ typings/
 # Optional REPL history
 .node_repl_history
 
+# Conversation history storage
+backend/history.json
+pendingTurns.json
+
 # Output of 'npm pack'
 *.tgz
 

@@ -3,6 +3,7 @@ require("../src/utils/logger");
 const express = require('express');
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { WebSocketServer } = require('ws');
+const historyStore = require('./historyStore');
 
 const app = express();
 app.use(express.json());
@@ -18,6 +19,40 @@ app.post('/ask', async (req, res) => {
   } catch (err) {
     logger.error('Error:', err);
     res.status(500).json({ error: 'Generation failed' });
+  }
+});
+
+app.post('/history/:sessionId/turn', (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    historyStore.appendTurn(sessionId, req.body || {});
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Error saving history turn:', err);
+    res.status(500).json({ error: 'Failed to save turn' });
+  }
+});
+
+app.get('/history', (req, res) => {
+  try {
+    const sessions = historyStore.listSessions();
+    res.json(sessions);
+  } catch (err) {
+    logger.error('Error listing history:', err);
+    res.status(500).json({ error: 'Failed to list history' });
+  }
+});
+
+app.get('/history/:sessionId', (req, res) => {
+  try {
+    const session = historyStore.getSession(req.params.sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(session);
+  } catch (err) {
+    logger.error('Error loading session:', err);
+    res.status(500).json({ error: 'Failed to load session' });
   }
 });
 
