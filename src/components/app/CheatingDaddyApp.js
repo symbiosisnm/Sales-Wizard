@@ -418,14 +418,27 @@ export class CheatingDaddyApp extends LitElement {
 
     // Assistant view event handlers
     async handleSendText(message) {
-        const result = await window.cheddar.sendTextMessage(message);
-
-        if (!result.success) {
-            logger.error('Failed to send message:', result.error);
-            this.setStatus('Error sending message: ' + result.error);
-        } else {
-            this.setStatus('Message sent...');
-            this._awaitingNewResponse = true;
+        try {
+            const whitelist = JSON.parse(localStorage.getItem('whitelist') || '[]');
+            const res = await fetch('http://localhost:3001/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: message, resources: whitelist }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                logger.error('Failed to send message:', data.error);
+                this.setStatus('Error sending message: ' + (data.error || 'Request failed'));
+                return { success: false, error: data.error || 'Request failed' };
+            }
+            this.setResponse(data.reply);
+            this.setStatus('');
+            this._awaitingNewResponse = false;
+            return { success: true };
+        } catch (err) {
+            logger.error('Failed to send message:', err);
+            this.setStatus('Error sending message: ' + err.message);
+            return { success: false, error: err.message };
         }
     }
 

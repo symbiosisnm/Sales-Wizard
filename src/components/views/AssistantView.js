@@ -231,6 +231,50 @@ export class AssistantView extends LitElement {
             background: var(--text-input-button-hover);
         }
 
+        .context-params {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 10px 0;
+        }
+
+        .context-params textarea {
+            background: var(--input-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            padding: 8px;
+            border-radius: 6px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .context-params textarea:focus {
+            outline: none;
+            border-color: var(--focus-border-color);
+            box-shadow: 0 0 0 3px var(--focus-box-shadow);
+            background: var(--input-focus-background);
+        }
+
+        .context-params button {
+            align-self: flex-start;
+            background: var(--start-button-background);
+            color: var(--start-button-color);
+            border: 1px solid var(--start-button-border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .context-params button:hover {
+            background: var(--start-button-hover-background);
+            border-color: var(--start-button-hover-border);
+        }
+
+        .context-params .error {
+            color: var(--danger-color, #ef4444);
+            font-size: 12px;
+        }
+
         .nav-button {
             background: transparent;
             color: white;
@@ -300,6 +344,8 @@ export class AssistantView extends LitElement {
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         savedResponses: { type: Array },
+        whitelistText: { type: String },
+        validationError: { type: String },
     };
 
     constructor() {
@@ -315,6 +361,15 @@ export class AssistantView extends LitElement {
         } catch (e) {
             this.savedResponses = [];
         }
+
+        // Load whitelist from localStorage
+        try {
+            const list = JSON.parse(localStorage.getItem('whitelist') || '[]');
+            this.whitelistText = Array.isArray(list) ? list.join('\n') : '';
+        } catch (_e) {
+            this.whitelistText = '';
+        }
+        this.validationError = '';
     }
 
     getProfileNames() {
@@ -501,7 +556,12 @@ export class AssistantView extends LitElement {
         if (textInput && textInput.value.trim()) {
             const message = textInput.value.trim();
             textInput.value = ''; // Clear input
-            await this.onSendText(message);
+            const result = await this.onSendText(message);
+            if (result && !result.success) {
+                this.validationError = result.error || 'Request failed';
+            } else {
+                this.validationError = '';
+            }
         }
     }
 
@@ -558,6 +618,32 @@ export class AssistantView extends LitElement {
         }
     }
 
+    saveWhitelist() {
+        const textarea = this.shadowRoot.querySelector('#contextParams');
+        if (!textarea) return;
+        const list = textarea.value
+            .split('\n')
+            .map(l => l.trim())
+            .filter(Boolean);
+        localStorage.setItem('whitelist', JSON.stringify(list));
+        fetch('http://localhost:3001/context/whitelist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ whitelist: list }),
+        })
+            .then(async res => {
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    this.validationError = data.error || 'Failed to update whitelist';
+                } else {
+                    this.validationError = '';
+                }
+            })
+            .catch(() => {
+                this.validationError = 'Failed to update whitelist';
+            });
+    }
+
     updateResponseContent() {
         logger.info('updateResponseContent called');
         const container = this.shadowRoot.querySelector('#responseContainer');
@@ -600,6 +686,19 @@ export class AssistantView extends LitElement {
 
         return html`
             <div class="response-container" id="responseContainer"></div>
+
+            <div class="context-params">
+                <textarea
+                    id="contextParams"
+                    placeholder="Allowed domains or documents, one per line"
+                    .value=${this.whitelistText}
+                    @input=${e => (this.whitelistText = e.target.value)}
+                ></textarea>
+                <button @click=${this.saveWhitelist}>Update Whitelist</button>
+                ${this.validationError
+                    ? html`<div class="error">${this.validationError}</div>`
+                    : ''}
+            </div>
 
             <div class="text-input-container">
                 <button class="nav-button" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0}>
