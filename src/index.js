@@ -1,9 +1,12 @@
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
-require("./utils/logger");
+
+require('dotenv').config();
+require('./utils/logger');
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
+const { getAppName } = require('./utils/config');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const { registerSecureStoreIpc } = require('./utils/secureStore');
@@ -12,6 +15,8 @@ const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
+
+app.setName(getAppName());
 
 // Initialize random process names for stealth
 const randomNames = initializeRandomProcessNames();

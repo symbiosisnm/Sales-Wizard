@@ -1,6 +1,11 @@
 // renderer.js
 const { ipcRenderer } = window.electron || {};
 
+const appName = window.config?.getAppName();
+if (appName) {
+    document.title = appName;
+}
+
 // Initialize random display name for UI components
 window.randomDisplayName = null;
 

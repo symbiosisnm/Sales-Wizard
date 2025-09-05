@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const config = require('./utils/config');
 
 const ipc = {
     invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
@@ -10,3 +11,5 @@ const ipc = {
 };
 
 contextBridge.exposeInMainWorld('electron', { ipcRenderer: ipc });
+contextBridge.exposeInMainWorld('env', { ...process.env });
+contextBridge.exposeInMainWorld('config', config);
