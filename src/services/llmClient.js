@@ -40,11 +40,12 @@ export class LLMClient {
                 this.ws.onopen = () => {
                     opened = true;
                     clearTimeout(timeout);
+                    const instr = systemInstruction || this._buildSystemInstruction();
                     this._send({
                         type: 'start',
                         model,
                         responseModalities,
-                        systemInstruction,
+                        systemInstruction: instr,
                     });
                     this.onStatus('WS open');
                     resolve(true);
@@ -81,6 +82,22 @@ export class LLMClient {
                 reject(e);
             }
         });
+    }
+
+    _buildSystemInstruction() {
+        try {
+            if (typeof localStorage === 'undefined') return undefined;
+            const allowedSources = localStorage.getItem('contextAllowedSources') || '';
+            const toneLength = localStorage.getItem('contextToneLength') || '';
+            const disallowedTopics = localStorage.getItem('contextDisallowedTopics') || '';
+            const parts = [];
+            if (allowedSources) parts.push(`Allowed sources: ${allowedSources}.`);
+            if (toneLength) parts.push(`Tone/Length: ${toneLength}.`);
+            if (disallowedTopics) parts.push(`Disallowed topics: ${disallowedTopics}.`);
+            return parts.join(' ');
+        } catch (e) {
+            return undefined;
+        }
     }
 
     _send(obj) {

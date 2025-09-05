@@ -408,6 +408,9 @@ export class CustomizeView extends LitElement {
         googleSearchEnabled: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
+        allowedSources: { type: String },
+        toneLength: { type: String },
+        disallowedTopics: { type: String },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
@@ -450,6 +453,11 @@ export class CustomizeView extends LitElement {
         this.screenshotRegionMode = 'full';
         this.enableTTS = false;
 
+        // Context parameter defaults
+        this.allowedSources = localStorage.getItem('contextAllowedSources') || '';
+        this.toneLength = localStorage.getItem('contextToneLength') || '';
+        this.disallowedTopics = localStorage.getItem('contextDisallowedTopics') || '';
+
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
         this.loadScreenshotRegionMode();
@@ -457,6 +465,9 @@ export class CustomizeView extends LitElement {
         this.loadAdvancedModeSettings();
         this.loadBackgroundTransparency();
         this.loadFontSize();
+
+        // Notify backend of current context parameters
+        this.updateContextParams();
     }
 
     connectedCallback() {
@@ -558,6 +569,36 @@ export class CustomizeView extends LitElement {
         this.selectedLanguage = e.target.value;
         localStorage.setItem('selectedLanguage', this.selectedLanguage);
         this.onLanguageChange(this.selectedLanguage);
+    }
+
+    updateContextParams() {
+        try {
+            window.electron?.ipcRenderer?.invoke('set-context-params', {
+                allowedSources: this.allowedSources,
+                toneLength: this.toneLength,
+                disallowedTopics: this.disallowedTopics,
+            });
+        } catch (e) {
+            /* empty */
+        }
+    }
+
+    handleAllowedSourcesChange(e) {
+        this.allowedSources = e.target.value;
+        localStorage.setItem('contextAllowedSources', this.allowedSources);
+        this.updateContextParams();
+    }
+
+    handleToneLengthChange(e) {
+        this.toneLength = e.target.value;
+        localStorage.setItem('contextToneLength', this.toneLength);
+        this.updateContextParams();
+    }
+
+    handleDisallowedTopicsChange(e) {
+        this.disallowedTopics = e.target.value;
+        localStorage.setItem('contextDisallowedTopics', this.disallowedTopics);
+        this.updateContextParams();
     }
 
     handleScreenshotIntervalSelect(e) {
@@ -946,6 +987,44 @@ export class CustomizeView extends LitElement {
                                 Personalize the AI's behavior with specific instructions that will be added to the
                                 ${profileNames[this.selectedProfile] || 'selected profile'} base prompts
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Context Parameters Section -->
+                <div class="settings-section">
+                    <div class="section-title">
+                        <span>Context Parameters</span>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label class="form-label">Allowed Data Sources</label>
+                            <input
+                                class="form-control"
+                                placeholder="https://example.com, finance-news"
+                                .value=${this.allowedSources}
+                                @input=${this.handleAllowedSourcesChange}
+                            />
+                            <div class="form-description">Comma-separated URLs or categories</div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Tone/Length Constraints</label>
+                            <input
+                                class="form-control"
+                                placeholder="friendly, <=200 words"
+                                .value=${this.toneLength}
+                                @input=${this.handleToneLengthChange}
+                            />
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Disallowed Topics</label>
+                            <input
+                                class="form-control"
+                                placeholder="politics, religion"
+                                .value=${this.disallowedTopics}
+                                @input=${this.handleDisallowedTopicsChange}
+                            />
                         </div>
                     </div>
                 </div>
