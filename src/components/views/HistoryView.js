@@ -118,6 +118,12 @@ export class HistoryView extends LitElement {
             margin-bottom: 12px;
         }
 
+        .back-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
         .back-button {
             background: var(--button-background);
             color: var(--text-color);
@@ -184,6 +190,12 @@ export class HistoryView extends LitElement {
             color: var(--description-color);
             font-size: 12px;
             margin-top: 32px;
+        }
+
+        .history-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
         }
 
         /* Scrollbar styles for scrollable elements */
@@ -333,6 +345,14 @@ export class HistoryView extends LitElement {
         super.connectedCallback();
         // Resize window for this view
         resizeLayout();
+        const limit = localStorage.getItem('historySessionLimit');
+        if (limit) {
+            fetch(`${API_BASE}/history/limit`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ limit }),
+            }).catch(err => logger.error('Failed to apply history limit:', err));
+        }
     }
 
     async loadSessions() {
@@ -395,6 +415,35 @@ export class HistoryView extends LitElement {
         this.selectedSession = null;
     }
 
+    async handleClearHistory() {
+        try {
+            await fetch(`${API_BASE}/history`, { method: 'DELETE' });
+            this.sessions = [];
+            this.selectedSession = null;
+        } catch (error) {
+            logger.error('Error clearing history:', error);
+        }
+    }
+
+    async handleDownloadHistory() {
+        if (!this.selectedSession) return;
+        try {
+            const res = await fetch(`${API_BASE}/history/${this.selectedSession.id}`);
+            const data = await res.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], {
+                type: 'application/json',
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `history-${this.selectedSession.id}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            logger.error('Error downloading history:', error);
+        }
+    }
+
     handleTabClick(tab) {
         this.activeTab = tab;
     }
@@ -431,6 +480,9 @@ export class HistoryView extends LitElement {
         }
 
         return html`
+            <div class="history-actions">
+                <button class="back-button" @click=${this.handleClearHistory}>Clear History</button>
+            </div>
             <div class="sessions-list">
                 ${this.sessions.map(
                     session => html`
@@ -524,20 +576,23 @@ export class HistoryView extends LitElement {
 
         return html`
             <div class="back-header">
-                <button class="back-button" @click=${this.handleBackClick}>
-                    <svg
-                        width="16px"
-                        height="16px"
-                        stroke-width="1.7"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        color="currentColor"
-                    >
-                        <path d="M15 6L9 12L15 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                    Back to Sessions
-                </button>
+                <div class="back-actions">
+                    <button class="back-button" @click=${this.handleBackClick}>
+                        <svg
+                            width="16px"
+                            height="16px"
+                            stroke-width="1.7"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            color="currentColor"
+                        >
+                            <path d="M15 6L9 12L15 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                        Back to Sessions
+                    </button>
+                    <button class="back-button" @click=${this.handleDownloadHistory}>Download History</button>
+                </div>
                 <div class="legend">
                     <div class="legend-item">
                         <div class="legend-dot user"></div>

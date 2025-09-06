@@ -3,6 +3,18 @@ const path = require('path');
 
 const HISTORY_FILE = path.join(__dirname, 'history.json');
 
+// Default maximum number of sessions to keep. Can be overridden at runtime via
+// the exported setMaxSessions function or by setting the
+// HISTORY_SESSION_LIMIT environment variable before the server starts.
+let maxSessions = Number(process.env.HISTORY_SESSION_LIMIT) || 50;
+
+function setMaxSessions(limit) {
+    const parsed = Number(limit);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+        maxSessions = parsed;
+    }
+}
+
 function loadHistory() {
     try {
         const raw = fs.readFileSync(HISTORY_FILE, 'utf8');
@@ -41,6 +53,17 @@ function appendTurn(sessionId, data) {
         });
     }
 
+    // Prune oldest sessions if over the configured limit
+    const sessions = Object.values(history.sessions).sort(
+        (a, b) => b.timestamp - a.timestamp
+    );
+    if (sessions.length > maxSessions) {
+        const toRemove = sessions.slice(maxSessions);
+        for (const old of toRemove) {
+            delete history.sessions[old.id];
+        }
+    }
+
     saveHistory(history);
     return session;
 }
@@ -68,8 +91,14 @@ function getSession(sessionId) {
     return history.sessions[sessionId] || null;
 }
 
+function clearHistory() {
+    saveHistory({ sessions: {} });
+}
+
 module.exports = {
     appendTurn,
     listSessions,
     getSession,
+    clearHistory,
+    setMaxSessions,
 };
