@@ -111,6 +111,29 @@ export class HistoryView extends LitElement {
             border-left-color: #ed4245; /* Discord red */
         }
 
+        .session-notes {
+            margin-bottom: 12px;
+            padding: 12px;
+            background: var(--input-background);
+            border: 1px solid var(--button-border);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-color);
+            line-height: 1.4;
+            user-select: text;
+            cursor: text;
+        }
+
+        .session-notes-title {
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text-color);
+        }
+
+        .session-notes-content {
+            white-space: pre-wrap;
+        }
+
         .back-header {
             display: flex;
             justify-content: space-between;
@@ -403,7 +426,8 @@ export class HistoryView extends LitElement {
         try {
             this.loading = true;
             const res = await fetch(`${API_BASE}/history/${sessionId}`);
-            this.selectedSession = await res.json();
+            const data = await res.json();
+            this.selectedSession = { ...data, notes: data.notes || '' };
         } catch (error) {
             logger.error('Error loading session transcript:', error);
         } finally {
@@ -551,7 +575,7 @@ export class HistoryView extends LitElement {
     renderConversationView() {
         if (!this.selectedSession) return html``;
 
-        const { conversationHistory } = this.selectedSession;
+        const { conversationHistory, notes } = this.selectedSession;
 
         // Flatten the conversation turns into individual messages
         const messages = [];
@@ -605,8 +629,18 @@ export class HistoryView extends LitElement {
                 </div>
             </div>
             <div class="conversation-view">
+                ${notes
+                    ? html`
+                          <div class="session-notes">
+                              <div class="session-notes-title">Notes</div>
+                              <div class="session-notes-content">${notes}</div>
+                          </div>
+                      `
+                    : ''}
                 ${messages.length > 0
-                    ? messages.map(message => html` <div class="message ${message.type}">${message.content}</div> `)
+                    ? messages.map(
+                          message => html`<div class="message ${message.type}">${message.content}</div>`
+                      )
                     : html`<div class="empty-state">No conversation data available</div>`}
             </div>
         `;
