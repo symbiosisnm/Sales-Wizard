@@ -36,6 +36,36 @@ export class SidePanel extends LitElement {
             padding: var(--main-content-padding);
         }
 
+        .notes-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 8px;
+            gap: 8px;
+        }
+
+        .save-button {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .save-button:hover {
+            background: var(--hover-background);
+        }
+
+        .format-select {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
         textarea {
             width: 100%;
             height: 100%;
@@ -65,12 +95,16 @@ export class SidePanel extends LitElement {
     static properties = {
         transcripts: { type: Array },
         notes: { type: String },
+        selectedProfile: { type: String },
+        exportFormat: { type: String },
     };
 
     constructor() {
         super();
         this.transcripts = [];
         this.notes = '';
+        this.selectedProfile = 'interview';
+        this.exportFormat = 'json';
     }
 
     _onNotesChange(e) {
@@ -82,6 +116,33 @@ export class SidePanel extends LitElement {
                 composed: true,
             })
         );
+    }
+
+    _onFormatChange(e) {
+        this.exportFormat = e.target.value;
+    }
+
+    async _onSaveSession() {
+        if (!window.electron?.exportSession) return;
+        try {
+            const res = await window.electron.exportSession({
+                format: this.exportFormat,
+                notes: this.notes,
+                profile: this.selectedProfile,
+            });
+            if (res?.success) {
+                const bytes = Uint8Array.from(atob(res.data), c => c.charCodeAt(0));
+                const blob = new Blob([bytes], { type: res.mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = res.filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        } catch (e) {
+            logger.error('Failed to save session:', e);
+        }
     }
 
     render() {
@@ -102,6 +163,13 @@ export class SidePanel extends LitElement {
                     @input=${this._onNotesChange}
                     placeholder="Notes..."
                 ></textarea>
+                <div class="notes-actions">
+                    <select class="format-select" .value=${this.exportFormat} @change=${this._onFormatChange}>
+                        <option value="json">JSON</option>
+                        <option value="markdown">Markdown</option>
+                    </select>
+                    <button class="save-button" @click=${this._onSaveSession}>Save session</button>
+                </div>
             </div>
         `;
     }
