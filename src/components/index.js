@@ -1,6 +1,7 @@
 // Main app components
 export { CheatingDaddyApp } from './app/CheatingDaddyApp.js';
 export { AppHeader } from './app/AppHeader.js';
+export { SidePanel } from './app/SidePanel.js';
 
 // View components
 export { MainView } from './views/MainView.js';
