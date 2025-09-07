@@ -41,11 +41,16 @@ function appendTurn(sessionId, data) {
             id: sessionId,
             timestamp: data.timestamp || Date.now(),
             conversationHistory: [],
+            notes: data.notes || '',
         };
         history.sessions[sessionId] = session;
     }
 
-    if (!data.sessionStart) {
+    if (typeof data.notes === 'string') {
+        session.notes = data.notes;
+    }
+
+    if (!data.sessionStart && (data.transcription || data.ai_response)) {
         session.conversationHistory.push({
             timestamp: data.timestamp || Date.now(),
             transcription: data.transcription || '',
