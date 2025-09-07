@@ -600,6 +600,7 @@ export class CheatingDaddyApp extends LitElement {
                         <side-panel
                             .notes=${this.notes}
                             .transcripts=${this.transcripts}
+                            .selectedProfile=${this.selectedProfile}
                             @notes-change=${e => this.handleNotesChange(e)}
                         ></side-panel>
                     </div>

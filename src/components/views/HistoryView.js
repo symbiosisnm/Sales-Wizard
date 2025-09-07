@@ -147,6 +147,15 @@ export class HistoryView extends LitElement {
             align-items: center;
         }
 
+        .export-select {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
         .back-button {
             background: var(--button-background);
             color: var(--text-color);
@@ -347,6 +356,7 @@ export class HistoryView extends LitElement {
         loading: { type: Boolean },
         activeTab: { type: String },
         savedResponses: { type: Array },
+        exportFormat: { type: String },
     };
 
     constructor() {
@@ -361,6 +371,7 @@ export class HistoryView extends LitElement {
         } catch (e) {
             this.savedResponses = [];
         }
+        this.exportFormat = 'json';
         this.loadSessions();
     }
 
@@ -449,22 +460,30 @@ export class HistoryView extends LitElement {
         }
     }
 
-    async handleDownloadHistory() {
-        if (!this.selectedSession) return;
+    async handleSaveSession() {
+        if (!this.selectedSession || !window.electron?.exportSession) return;
         try {
-            const res = await fetch(`${API_BASE}/history/${this.selectedSession.id}`);
-            const data = await res.json();
-            const blob = new Blob([JSON.stringify(data, null, 2)], {
-                type: 'application/json',
+            const res = await window.electron.exportSession({
+                format: this.exportFormat,
+                session: {
+                    sessionId: this.selectedSession.id,
+                    history: this.selectedSession.conversationHistory || [],
+                },
+                notes: this.selectedSession.notes || '',
+                profile: this.selectedSession.profile || localStorage.getItem('selectedProfile') || '',
             });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `history-${this.selectedSession.id}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            if (res?.success) {
+                const bytes = Uint8Array.from(atob(res.data), c => c.charCodeAt(0));
+                const blob = new Blob([bytes], { type: res.mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = res.filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
         } catch (error) {
-            logger.error('Error downloading history:', error);
+            logger.error('Error saving session:', error);
         }
     }
 
@@ -615,7 +634,11 @@ export class HistoryView extends LitElement {
                         </svg>
                         Back to Sessions
                     </button>
-                    <button class="back-button" @click=${this.handleDownloadHistory}>Download History</button>
+                    <select class="export-select" .value=${this.exportFormat} @change=${e => (this.exportFormat = e.target.value)}>
+                        <option value="json">JSON</option>
+                        <option value="markdown">Markdown</option>
+                    </select>
+                    <button class="back-button" @click=${this.handleSaveSession}>Save session</button>
                 </div>
                 <div class="legend">
                     <div class="legend-item">

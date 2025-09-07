@@ -98,6 +98,22 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    ipcMain.handle('export-session', async options => {
+        try {
+            const { blob, filename } = sessionManager.exportSession(options);
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            return {
+                success: true,
+                data: buffer.toString('base64'),
+                mimeType: blob.type,
+                filename,
+            };
+        } catch (error) {
+            logger.error('Error exporting session:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('update-google-search-setting', async enabled => {
         try {
             logger.info('Google Search setting updated to:', enabled);

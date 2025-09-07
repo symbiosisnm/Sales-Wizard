@@ -24,6 +24,7 @@ const api = {
   updateContentProtection: enabled =>
     ipcRenderer.invoke('update-content-protection', enabled),
   getRandomDisplayName: () => ipcRenderer.invoke('get-random-display-name'),
+  exportSession: options => ipcRenderer.invoke('export-session', options),
   onUpdateResponse: handler => ipcRenderer.on('update-response', handler),
   removeUpdateResponseListener: handler =>
     ipcRenderer.removeListener('update-response', handler),
