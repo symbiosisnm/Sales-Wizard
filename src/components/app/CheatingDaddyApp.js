@@ -141,6 +141,9 @@ export class CheatingDaddyApp extends LitElement {
         sessionId: { type: String },
         transcripts: { type: Array },
         notes: { type: String },
+        connectionStatus: { type: String },
+        audioStatus: { type: String },
+        screenStatus: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -170,6 +173,9 @@ export class CheatingDaddyApp extends LitElement {
         this.sessionId = null;
         this.transcripts = [];
         this.notes = '';
+        this.connectionStatus = 'disconnected';
+        this.audioStatus = 'inactive';
+        this.screenStatus = 'inactive';
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -245,6 +251,15 @@ export class CheatingDaddyApp extends LitElement {
                 if (response) this.setResponse(response);
             },
             onStatus: status => this.setStatus(status),
+            onConnectionStatus: status => {
+                this.connectionStatus = status;
+            },
+            onAudioStatus: status => {
+                this.audioStatus = status;
+            },
+            onScreenStatus: status => {
+                this.screenStatus = status;
+            },
             onError: err => logger.error('Live streaming error:', err),
         })
             .then(stopFn => {
@@ -266,6 +281,9 @@ export class CheatingDaddyApp extends LitElement {
         if (this._stopLiveStreaming) {
             this._stopLiveStreaming();
             this._stopLiveStreaming = null;
+            this.connectionStatus = 'disconnected';
+            this.audioStatus = 'inactive';
+            this.screenStatus = 'inactive';
         }
 
         super.disconnectedCallback();
@@ -623,6 +641,9 @@ export class CheatingDaddyApp extends LitElement {
                         .statusText=${this.statusText}
                         .startTime=${this.startTime}
                         .advancedMode=${this.advancedMode}
+                        .connectionStatus=${this.connectionStatus}
+                        .audioStatus=${this.audioStatus}
+                        .screenStatus=${this.screenStatus}
                         .onCustomizeClick=${() => this.handleCustomizeClick()}
                         .onHelpClick=${() => this.handleHelpClick()}
                         .onHistoryClick=${() => this.handleHistoryClick()}

@@ -8,19 +8,24 @@ import { LLMClient } from '../services/llmClient.js';
  * @param {Object} opts
  * @param {(text:string)=>void} opts.onResponse Called when model emits text
  * @param {(status:string)=>void} [opts.onStatus] Status updates from client
+ * @param {(s:string)=>void} [opts.onConnectionStatus] WebSocket connection state
+ * @param {(s:string)=>void} [opts.onAudioStatus] Microphone streaming state
+ * @param {(s:string)=>void} [opts.onScreenStatus] Screen capture streaming state
  * @param {(err:string)=>void} [opts.onError] Error messages
  * @returns {Promise<()=>void>} resolves to a stop function
  */
-export async function startLiveStreaming({ onResponse, onStatus = () => {}, onError = () => {} }) {
+export async function startLiveStreaming({ onResponse, onStatus = () => {}, onConnectionStatus = () => {}, onAudioStatus = () => {}, onScreenStatus = () => {}, onError = () => {} }) {
   const client = new LLMClient();
   client.onText = onResponse;
   client.onStatus = onStatus;
   client.onError = onError;
+  client.onConnectionStatus = onConnectionStatus;
 
   await client.connect();
 
   // Audio capture
   let audioStream; let audioCleanup = () => {};
+  onAudioStatus('starting');
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
@@ -44,6 +49,7 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
         };
         source.connect(node);
         node.connect(audioCtx.destination);
+        onAudioStatus('active');
         audioCleanup = () => {
           node.disconnect();
           cleanup();
@@ -64,6 +70,7 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
           const base64 = btoa(binary);
           client.sendPcm16Base64(base64);
         };
+        onAudioStatus('active');
         audioCleanup = () => {
           processor.disconnect();
           cleanup();
@@ -85,6 +92,7 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
         const base64 = btoa(binary);
         client.sendPcm16Base64(base64);
       };
+      onAudioStatus('active');
       audioCleanup = () => {
         processor.disconnect();
         cleanup();
@@ -92,10 +100,12 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
     }
   } catch (err) {
     logger.warn('Audio streaming failed to initialise:', err);
+    onAudioStatus('error');
   }
 
   // Screen capture
   let screenStream; let frameInterval;
+  onScreenStatus('starting');
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const track = screenStream.getVideoTracks()[0];
@@ -111,15 +121,19 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
         logger.warn('Error capturing screen frame:', err);
       }
     }, 1000);
+    onScreenStatus('active');
   } catch (err) {
     logger.warn('Screen streaming failed to initialise:', err);
+    onScreenStatus('error');
   }
 
   return () => {
     client.end();
     audioCleanup();
+    onAudioStatus('inactive');
     if (frameInterval) clearInterval(frameInterval);
     if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+    onScreenStatus('inactive');
   };
 }
 

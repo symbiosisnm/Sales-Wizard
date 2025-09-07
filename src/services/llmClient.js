@@ -10,6 +10,8 @@ export class LLMClient {
     onText = () => {};
     /** @type {(s:string)=>void} */
     onStatus = () => {};
+    /** @type {(s:string)=>void} */
+    onConnectionStatus = () => {};
     /** @type {(e:string)=>void} */
     onError = () => {};
     /** @type {(data:string,mime:string)=>void} */
@@ -22,6 +24,7 @@ export class LLMClient {
     connect({ model = 'gemini-2.0-flash-live-001', responseModalities = ['TEXT'], systemInstruction } = {}) {
         return new Promise((resolve, reject) => {
             try {
+                this.onConnectionStatus('connecting');
                 this.ws = new WebSocket(this.url);
                 let opened = false;
                 const timeout = setTimeout(() => {
@@ -48,10 +51,12 @@ export class LLMClient {
                         systemInstruction: instr,
                     });
                     this.onStatus('WS open');
+                    this.onConnectionStatus('connected');
                     resolve(true);
                 };
                 this.ws.onclose = () => {
                     this.onStatus('WS closed');
+                    this.onConnectionStatus('disconnected');
                     if (!opened) {
                         clearTimeout(timeout);
                         const msg = 'WS closed before open';
@@ -62,6 +67,7 @@ export class LLMClient {
                 this.ws.onerror = e => {
                     const msg = `WS error: ${e?.message || String(e)}`;
                     this.onError(msg);
+                    this.onConnectionStatus('error');
                     if (!opened) {
                         clearTimeout(timeout);
                         reject(new Error(msg));

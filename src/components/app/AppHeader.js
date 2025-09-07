@@ -87,6 +87,41 @@ export class AppHeader extends LitElement {
             font-size: 12px;
             margin: 0px;
         }
+
+        .status-indicators {
+            display: flex;
+            gap: var(--header-gap);
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: var(--header-font-size-small);
+            color: var(--header-actions-color);
+        }
+
+        .status-indicator .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--border-color);
+        }
+
+        .status-indicator .dot.connected,
+        .status-indicator .dot.active {
+            background: var(--success-color, #22c55e);
+        }
+
+        .status-indicator .dot.connecting,
+        .status-indicator .dot.starting {
+            background: var(--warning-color, #fbbf24);
+        }
+
+        .status-indicator .dot.error {
+            background: var(--danger-color, #ef4444);
+        }
     `;
 
     static properties = {
@@ -103,6 +138,9 @@ export class AppHeader extends LitElement {
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
         appName: { type: String },
+        connectionStatus: { type: String },
+        audioStatus: { type: String },
+        screenStatus: { type: String },
     };
 
     constructor() {
@@ -120,6 +158,9 @@ export class AppHeader extends LitElement {
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
         this.appName = getAppName();
+        this.connectionStatus = 'disconnected';
+        this.audioStatus = 'inactive';
+        this.screenStatus = 'inactive';
         this._timerInterval = null;
         this._appNameInterval = null;
     }
@@ -221,6 +262,13 @@ export class AppHeader extends LitElement {
         return navigationViews.includes(this.currentView);
     }
 
+    renderIndicator(label, status) {
+        return html`<div class="status-indicator" title="${label}: ${status}">
+            <span class="dot ${status}"></span>
+            <span>${label}</span>
+        </div>`;
+    }
+
     render() {
         const elapsedTime = this.getElapsedTime();
 
@@ -232,6 +280,11 @@ export class AppHeader extends LitElement {
                         ? html`
                               <span>${elapsedTime}</span>
                               <span>${this.statusText}</span>
+                              <div class="status-indicators">
+                                  ${this.renderIndicator('WS', this.connectionStatus)}
+                                  ${this.renderIndicator('Mic', this.audioStatus)}
+                                  ${this.renderIndicator('Screen', this.screenStatus)}
+                              </div>
                           `
                         : ''}
                     ${this.currentView === 'main'
