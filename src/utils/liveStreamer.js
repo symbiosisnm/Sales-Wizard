@@ -96,9 +96,23 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
 
   // Screen capture
   let screenStream; let frameInterval;
+
+  const stopScreenCapture = () => {
+    if (frameInterval) {
+      clearInterval(frameInterval);
+      frameInterval = null;
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach(t => t.stop());
+      screenStream = null;
+    }
+    onStatus('Screen capture ended');
+  };
+
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const track = screenStream.getVideoTracks()[0];
+    track.onended = stopScreenCapture;
     const imageCapture = new ImageCapture(track);
     frameInterval = setInterval(async () => {
       try {
@@ -112,14 +126,18 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
       }
     }, 1000);
   } catch (err) {
-    logger.warn('Screen streaming failed to initialise:', err);
+    const msg = err?.name === 'NotAllowedError'
+      ? 'Screen capture request was blocked or denied. Your browser may require a reload before prompting again.'
+      : `Screen streaming failed to initialise: ${err?.message || err}`;
+    logger.warn(msg, err);
+    onError(msg);
+    stopScreenCapture();
   }
 
   return () => {
     client.end();
     audioCleanup();
-    if (frameInterval) clearInterval(frameInterval);
-    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+    stopScreenCapture();
   };
 }
 
