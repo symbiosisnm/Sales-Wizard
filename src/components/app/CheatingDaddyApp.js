@@ -7,6 +7,7 @@ import '../views/HistoryView.js';
 import '../views/AssistantView.js';
 import '../views/OnboardingView.js';
 import '../views/AdvancedView.js';
+import '../views/SidePanel.js';
 
 // Voice assistant helper provides speech recognition via the Web Speech API.
 // It exports a startListening() function that returns a stop function.
@@ -74,6 +75,15 @@ export class CheatingDaddyApp extends LitElement {
             border: none;
         }
 
+        .assistant-container {
+            display: flex;
+            height: 100%;
+        }
+
+        .assistant-container assistant-view {
+            flex: 1;
+        }
+
         .main-content.onboarding-view {
             padding: 0;
             border: none;
@@ -128,6 +138,9 @@ export class CheatingDaddyApp extends LitElement {
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
         advancedMode: { type: Boolean },
+        sessionId: { type: String },
+        transcripts: { type: Array },
+        notes: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -154,6 +167,9 @@ export class CheatingDaddyApp extends LitElement {
         this._awaitingNewResponse = false;
         this._currentResponseIsComplete = true;
         this.shouldAnimateResponse = false;
+        this.sessionId = null;
+        this.transcripts = [];
+        this.notes = '';
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -197,6 +213,25 @@ export class CheatingDaddyApp extends LitElement {
                 const data = await res.json();
                 if (data.reply) {
                     this.setResponse(data.reply);
+                    if (this.sessionId) {
+                        this.transcripts = [
+                            ...this.transcripts,
+                            { transcription: transcript, ai_response: data.reply },
+                        ];
+                        try {
+                            await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    transcription: transcript,
+                                    ai_response: data.reply,
+                                    notes: this.notes,
+                                }),
+                            });
+                        } catch (err) {
+                            logger.error('Failed to post turn:', err);
+                        }
+                    }
                 }
             } catch (err) {
                 logger.error('Voice assistant fetch failed:', err);
@@ -368,6 +403,18 @@ export class CheatingDaddyApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.startTime = Date.now();
+        this.sessionId = self.crypto?.randomUUID?.() ?? Date.now().toString();
+        this.transcripts = [];
+        this.notes = '';
+        try {
+            await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionStart: true, notes: '' }),
+            });
+        } catch (error) {
+            logger.error('Failed to start session history:', error);
+        }
         this.currentView = 'assistant';
     }
 
@@ -422,6 +469,21 @@ export class CheatingDaddyApp extends LitElement {
         } else {
             this.setStatus('Message sent...');
             this._awaitingNewResponse = true;
+        }
+    }
+
+    async handleNotesChange(e) {
+        const newNotes = e?.detail?.value ?? e?.target?.value ?? '';
+        this.notes = newNotes;
+        if (!this.sessionId) return;
+        try {
+            await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: this.notes }),
+            });
+        } catch (error) {
+            logger.error('Failed to save notes:', error);
         }
     }
 
@@ -520,20 +582,27 @@ export class CheatingDaddyApp extends LitElement {
 
             case 'assistant':
                 return html`
-                    <assistant-view
-                        .responses=${this.responses}
-                        .currentResponseIndex=${this.currentResponseIndex}
-                        .selectedProfile=${this.selectedProfile}
-                        .onSendText=${message => this.handleSendText(message)}
-                        .shouldAnimateResponse=${this.shouldAnimateResponse}
-                        @response-index-changed=${this.handleResponseIndexChanged}
-                        @response-animation-complete=${() => {
-                            this.shouldAnimateResponse = false;
-                            this._currentResponseIsComplete = true;
-                            logger.info('[response-animation-complete] Marked current response as complete');
-                            this.requestUpdate();
-                        }}
-                    ></assistant-view>
+                    <div class="assistant-container">
+                        <assistant-view
+                            .responses=${this.responses}
+                            .currentResponseIndex=${this.currentResponseIndex}
+                            .selectedProfile=${this.selectedProfile}
+                            .onSendText=${message => this.handleSendText(message)}
+                            .shouldAnimateResponse=${this.shouldAnimateResponse}
+                            @response-index-changed=${this.handleResponseIndexChanged}
+                            @response-animation-complete=${() => {
+                                this.shouldAnimateResponse = false;
+                                this._currentResponseIsComplete = true;
+                                logger.info('[response-animation-complete] Marked current response as complete');
+                                this.requestUpdate();
+                            }}
+                        ></assistant-view>
+                        <side-panel
+                            .notes=${this.notes}
+                            .transcripts=${this.transcripts}
+                            @notes-change=${e => this.handleNotesChange(e)}
+                        ></side-panel>
+                    </div>
                 `;
 
             default:
