@@ -145,6 +145,7 @@ export class CheatingDaddyApp extends LitElement {
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
         shouldAnimateResponse: { type: Boolean },
+        audioLevel: { type: Number },
     };
 
     constructor() {
@@ -170,6 +171,7 @@ export class CheatingDaddyApp extends LitElement {
         this.sessionId = null;
         this.transcripts = [];
         this.notes = '';
+        this.audioLevel = 0;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -246,6 +248,10 @@ export class CheatingDaddyApp extends LitElement {
             },
             onStatus: status => this.setStatus(status),
             onError: err => logger.error('Live streaming error:', err),
+            onAudioLevel: level => {
+                this.audioLevel = level;
+                this.requestUpdate();
+            },
         })
             .then(stopFn => {
                 this._stopLiveStreaming = stopFn;
@@ -624,6 +630,7 @@ export class CheatingDaddyApp extends LitElement {
                         .statusText=${this.statusText}
                         .startTime=${this.startTime}
                         .advancedMode=${this.advancedMode}
+                        .audioLevel=${this.audioLevel}
                         .onCustomizeClick=${() => this.handleCustomizeClick()}
                         .onHelpClick=${() => this.handleHelpClick()}
                         .onHistoryClick=${() => this.handleHistoryClick()}
