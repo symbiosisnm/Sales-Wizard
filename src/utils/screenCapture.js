@@ -1,3 +1,4 @@
+/* global MediaStreamTrackProcessor */
 export async function startScreenCapture({ quality = 'medium', cropRegion = 'full' } = {}) {
   // Track cursor position when needed for cropping
   let lastCursorPoint = null;
