@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { getAppName } from '../../utils/config.js';
+import './AudioLevelIndicator.js';
 
 export class AppHeader extends LitElement {
     static styles = css`
@@ -103,6 +104,7 @@ export class AppHeader extends LitElement {
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
         appName: { type: String },
+        audioLevel: { type: Number },
     };
 
     constructor() {
@@ -121,6 +123,7 @@ export class AppHeader extends LitElement {
         this.onAdvancedClick = () => {};
         this.appName = getAppName();
         this._timerInterval = null;
+        this.audioLevel = 0;
         this._appNameInterval = null;
     }
 
@@ -384,6 +387,7 @@ export class AppHeader extends LitElement {
                         : ''}
                     ${this.currentView === 'assistant'
                         ? html`
+                              <audio-level-indicator .level=${this.audioLevel}></audio-level-indicator>
                               <button @click=${this.onHideToggleClick} class="button">
                                   Hide&nbsp;&nbsp;<span class="key" style="pointer-events: none;">${cheddar.isMacOS ? 'Cmd' : 'Ctrl'}</span
                                   >&nbsp;&nbsp;<span class="key">&bsol;</span>

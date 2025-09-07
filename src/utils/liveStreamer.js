@@ -9,9 +9,10 @@ import { LLMClient } from '../services/llmClient.js';
  * @param {(text:string)=>void} opts.onResponse Called when model emits text
  * @param {(status:string)=>void} [opts.onStatus] Status updates from client
  * @param {(err:string)=>void} [opts.onError] Error messages
+ * @param {(level:number)=>void} [opts.onAudioLevel] Receives audio level 0-1
  * @returns {Promise<()=>void>} resolves to a stop function
  */
-export async function startLiveStreaming({ onResponse, onStatus = () => {}, onError = () => {} }) {
+export async function startLiveStreaming({ onResponse, onStatus = () => {}, onError = () => {}, onAudioLevel = () => {} }) {
   const client = new LLMClient();
   client.onText = onResponse;
   client.onStatus = onStatus;
@@ -39,8 +40,18 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
           processorOptions: { targetSampleRate: 16000, samplesPerChunk: 1600 }
         });
         node.port.onmessage = e => {
-          const base64 = btoa(String.fromCharCode(...e.data));
+          const bytes = e.data;
+          const base64 = btoa(String.fromCharCode(...bytes));
           client.sendPcm16Base64(base64);
+          try {
+            const view = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2);
+            let sum = 0;
+            for (let i = 0; i < view.length; i++) sum += view[i] * view[i];
+            const rms = Math.sqrt(sum / view.length) / 32768;
+            onAudioLevel(rms);
+          } catch {
+            /* empty */
+          }
         };
         source.connect(node);
         node.connect(audioCtx.destination);
@@ -56,13 +67,16 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
         processor.onaudioprocess = e => {
           const input = e.inputBuffer.getChannelData(0);
           const pcm = new Int16Array(input.length);
+          let sum = 0;
           for (let i = 0; i < input.length; i++) {
             const s = Math.max(-1, Math.min(1, input[i]));
             pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+            sum += s * s;
           }
           const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
           const base64 = btoa(binary);
           client.sendPcm16Base64(base64);
+          onAudioLevel(Math.sqrt(sum / input.length));
         };
         audioCleanup = () => {
           processor.disconnect();
@@ -77,13 +91,16 @@ export async function startLiveStreaming({ onResponse, onStatus = () => {}, onEr
       processor.onaudioprocess = e => {
         const input = e.inputBuffer.getChannelData(0);
         const pcm = new Int16Array(input.length);
+        let sum = 0;
         for (let i = 0; i < input.length; i++) {
           const s = Math.max(-1, Math.min(1, input[i]));
           pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          sum += s * s;
         }
         const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
         const base64 = btoa(binary);
         client.sendPcm16Base64(base64);
+        onAudioLevel(Math.sqrt(sum / input.length));
       };
       audioCleanup = () => {
         processor.disconnect();
