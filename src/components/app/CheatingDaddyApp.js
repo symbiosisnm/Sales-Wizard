@@ -141,6 +141,7 @@ export class CheatingDaddyApp extends LitElement {
         sessionId: { type: String },
         transcripts: { type: Array },
         notes: { type: String },
+        activeTranscriptIndex: { type: Number },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -170,6 +171,7 @@ export class CheatingDaddyApp extends LitElement {
         this.sessionId = null;
         this.transcripts = [];
         this.notes = '';
+        this.activeTranscriptIndex = -1;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -214,9 +216,10 @@ export class CheatingDaddyApp extends LitElement {
                 if (data.reply) {
                     this.setResponse(data.reply);
                     if (this.sessionId) {
+                        const timestamp = Date.now();
                         this.transcripts = [
                             ...this.transcripts,
-                            { transcription: transcript, ai_response: data.reply },
+                            { transcription: transcript, ai_response: data.reply, timestamp },
                         ];
                         try {
                             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
@@ -297,7 +300,16 @@ export class CheatingDaddyApp extends LitElement {
             utter.rate = 1.0;
             utter.pitch = 1.0;
             speechSynthesis.cancel();
+            const idx = this.transcripts.findIndex(t => t.ai_response === text);
+            if (idx !== -1) {
+                this.activeTranscriptIndex = idx;
+            }
+            utter.onend = () => {
+                this.activeTranscriptIndex = -1;
+                this.requestUpdate();
+            };
             speechSynthesis.speak(utter);
+            this.requestUpdate();
         } catch (_e) {
             /* empty */
         }
@@ -406,6 +418,7 @@ export class CheatingDaddyApp extends LitElement {
         this.sessionId = self.crypto?.randomUUID?.() ?? Date.now().toString();
         this.transcripts = [];
         this.notes = '';
+        this.activeTranscriptIndex = -1;
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
                 method: 'POST',
@@ -600,6 +613,7 @@ export class CheatingDaddyApp extends LitElement {
                         <side-panel
                             .notes=${this.notes}
                             .transcripts=${this.transcripts}
+                            .activeTranscriptIndex=${this.activeTranscriptIndex}
                             @notes-change=${e => this.handleNotesChange(e)}
                         ></side-panel>
                     </div>
