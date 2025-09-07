@@ -14,6 +14,10 @@ import '../views/SidePanel.js';
 import { startListening } from '../../utils/voiceAssistant.js';
 // Live streaming helper integrates with Gemini Live via backend
 import { startLiveStreaming } from '../../utils/liveStreamer.js';
+import { logger as defaultLogger } from '../../utils/logger.js';
+
+// Use global logger if available, falling back to the imported logger or console
+const logger = globalThis.logger || defaultLogger || console;
 
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
