@@ -1,5 +1,6 @@
 import { LLMClient } from '../services/llmClient.js';
-import { logger as defaultLogger } from './logger.js';
+import defaultLogger from './logger.js';
+import { generateNotesFromResponse } from './summarizer.js';
 
 // Fallback to console if the logger script fails to attach to globalThis
 const logger = globalThis.logger || defaultLogger || console;
@@ -16,9 +17,29 @@ const logger = globalThis.logger || defaultLogger || console;
  * @param {(level:number)=>void} [opts.onAudioLevel] Receives audio level 0-1
  * @returns {Promise<()=>void>} resolves to a stop function
  */
-export async function startLiveStreaming({ onResponse, onStatus = () => {}, onError = () => {}, onAudioLevel = () => {} }) {
+export async function startLiveStreaming({
+  onResponse,
+  onStatus = () => {},
+  onError = () => {},
+  onAudioLevel = () => {},
+  onNote = () => {},
+}) {
   const client = new LLMClient();
-  client.onText = onResponse;
+  client.onText = msg => {
+    try {
+      if (typeof msg === 'string') {
+        onResponse(msg);
+      } else {
+        if (msg?.text) onResponse(msg.text);
+        if (msg?.final) {
+          const note = generateNotesFromResponse(msg);
+          if (note) onNote(note);
+        }
+      }
+    } catch (err) {
+      logger.warn('Error handling text:', err);
+    }
+  };
   client.onStatus = onStatus;
   client.onError = onError;
 

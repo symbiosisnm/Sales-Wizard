@@ -14,7 +14,7 @@ import '../views/SidePanel.js';
 import { startListening } from '../../utils/voiceAssistant.js';
 // Live streaming helper integrates with Gemini Live via backend
 import { startLiveStreaming } from '../../utils/liveStreamer.js';
-import { logger as defaultLogger } from '../../utils/logger.js';
+import defaultLogger from '../../utils/logger.js';
 
 // Use global logger if available, falling back to the imported logger or console
 const logger = globalThis.logger || defaultLogger || console;
@@ -144,7 +144,8 @@ export class CheatingDaddyApp extends LitElement {
         advancedMode: { type: Boolean },
         sessionId: { type: String },
         transcripts: { type: Array },
-        notes: { type: String },
+        notes: { type: Array },
+        noteText: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -174,7 +175,8 @@ export class CheatingDaddyApp extends LitElement {
         this.shouldAnimateResponse = false;
         this.sessionId = null;
         this.transcripts = [];
-        this.notes = '';
+        this.notes = [];
+        this.noteText = '';
         this.audioLevel = 0;
 
         // Apply layout mode to document root
@@ -231,7 +233,7 @@ export class CheatingDaddyApp extends LitElement {
                                 body: JSON.stringify({
                                     transcription: transcript,
                                     ai_response: data.reply,
-                                    notes: this.notes,
+                                    notes: this.noteText,
                                 }),
                             });
                         } catch (err) {
@@ -255,6 +257,12 @@ export class CheatingDaddyApp extends LitElement {
             onAudioLevel: level => {
                 this.audioLevel = level;
                 this.requestUpdate();
+            },
+            onNote: note => {
+                if (note) {
+                    this.notes = [...this.notes, note];
+                    this.requestUpdate();
+                }
             },
         })
             .then(stopFn => {
@@ -415,7 +423,8 @@ export class CheatingDaddyApp extends LitElement {
         this.startTime = Date.now();
         this.sessionId = self.crypto?.randomUUID?.() ?? Date.now().toString();
         this.transcripts = [];
-        this.notes = '';
+        this.notes = [];
+        this.noteText = '';
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
                 method: 'POST',
@@ -484,13 +493,13 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleNotesChange(e) {
         const newNotes = e?.detail?.value ?? e?.target?.value ?? '';
-        this.notes = newNotes;
+        this.noteText = newNotes;
         if (!this.sessionId) return;
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notes: this.notes }),
+                body: JSON.stringify({ notes: this.noteText }),
             });
         } catch (error) {
             logger.error('Failed to save notes:', error);
@@ -608,7 +617,7 @@ export class CheatingDaddyApp extends LitElement {
                             }}
                         ></assistant-view>
                         <side-panel
-                            .notes=${this.notes}
+                            .notes=${this.noteText}
                             .transcripts=${this.transcripts}
                             .selectedProfile=${this.selectedProfile}
                             @notes-change=${e => this.handleNotesChange(e)}
