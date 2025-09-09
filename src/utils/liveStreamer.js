@@ -1,5 +1,5 @@
 import { LLMClient } from '../services/llmClient.js';
-import { logger as defaultLogger } from './logger.js';
+import defaultLogger from './logger.js';
 
 // Fallback to console if the logger script fails to attach to globalThis
 const logger = globalThis.logger || defaultLogger || console;

@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import '../app/NoteStreamPanel.js';
 
 export class AssistantView extends LitElement {
     static styles = css`
@@ -13,8 +14,13 @@ export class AssistantView extends LitElement {
             cursor: default;
         }
 
-        .response-container {
+        .response-wrapper {
             height: calc(100% - 60px);
+            display: flex;
+        }
+
+        .response-container {
+            flex: 1;
             overflow-y: auto;
             border-radius: 10px;
             font-size: var(--response-font-size, 18px);
@@ -24,6 +30,11 @@ export class AssistantView extends LitElement {
             scroll-behavior: smooth;
             user-select: text;
             cursor: text;
+        }
+
+        note-stream-panel {
+            width: 250px;
+            margin-left: 16px;
         }
 
         /* Allow text selection for all content within the response container */
@@ -300,6 +311,7 @@ export class AssistantView extends LitElement {
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         savedResponses: { type: Array },
+        notes: { type: Array },
     };
 
     constructor() {
@@ -315,6 +327,7 @@ export class AssistantView extends LitElement {
         } catch (e) {
             this.savedResponses = [];
         }
+        this.notes = [];
     }
 
     getProfileNames() {
@@ -596,7 +609,10 @@ export class AssistantView extends LitElement {
         const isSaved = this.isResponseSaved();
 
         return html`
-            <div class="response-container" id="responseContainer"></div>
+            <div class="response-wrapper">
+                <div class="response-container" id="responseContainer"></div>
+                <note-stream-panel .notes=${this.notes}></note-stream-panel>
+            </div>
 
             <div class="text-input-container">
                 <button class="nav-button" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0}>

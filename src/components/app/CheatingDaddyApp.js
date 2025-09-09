@@ -14,7 +14,7 @@ import '../views/SidePanel.js';
 import { startListening } from '../../utils/voiceAssistant.js';
 // Live streaming helper integrates with Gemini Live via backend
 import { startLiveStreaming } from '../../utils/liveStreamer.js';
-import { logger as defaultLogger } from '../../utils/logger.js';
+import defaultLogger from '../../utils/logger.js';
 
 // Use global logger if available, falling back to the imported logger or console
 const logger = globalThis.logger || defaultLogger || console;
@@ -145,6 +145,7 @@ export class CheatingDaddyApp extends LitElement {
         sessionId: { type: String },
         transcripts: { type: Array },
         notes: { type: String },
+        noteStream: { type: Array },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -174,6 +175,7 @@ export class CheatingDaddyApp extends LitElement {
         this.shouldAnimateResponse = false;
         this.sessionId = null;
         this.transcripts = [];
+        this.noteStream = [];
         this.notes = '';
         this.audioLevel = 0;
 
@@ -599,6 +601,7 @@ export class CheatingDaddyApp extends LitElement {
                             .selectedProfile=${this.selectedProfile}
                             .onSendText=${message => this.handleSendText(message)}
                             .shouldAnimateResponse=${this.shouldAnimateResponse}
+                            .notes=${this.noteStream}
                             @response-index-changed=${this.handleResponseIndexChanged}
                             @response-animation-complete=${() => {
                                 this.shouldAnimateResponse = false;
