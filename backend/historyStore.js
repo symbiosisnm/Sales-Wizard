@@ -41,12 +41,12 @@ function appendTurn(sessionId, data) {
             id: sessionId,
             timestamp: data.timestamp || Date.now(),
             conversationHistory: [],
-            notes: data.notes || '',
+            notes: Array.isArray(data.notes) ? data.notes : [],
         };
         history.sessions[sessionId] = session;
     }
 
-    if (typeof data.notes === 'string') {
+    if (Array.isArray(data.notes)) {
         session.notes = data.notes;
     }
 

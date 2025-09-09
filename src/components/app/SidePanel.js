@@ -94,7 +94,7 @@ export class SidePanel extends LitElement {
 
     static properties = {
         transcripts: { type: Array },
-        notes: { type: String },
+        notes: { type: Array },
         selectedProfile: { type: String },
         exportFormat: { type: String },
     };
@@ -102,13 +102,16 @@ export class SidePanel extends LitElement {
     constructor() {
         super();
         this.transcripts = [];
-        this.notes = '';
+        this.notes = [];
         this.selectedProfile = 'interview';
         this.exportFormat = 'json';
     }
 
     _onNotesChange(e) {
-        this.notes = e.target.value;
+        const text = e.target.value;
+        const timestamp = this.notes[0]?.timestamp || Date.now();
+        const type = this.notes[0]?.type || 'manual';
+        this.notes = [{ text, type, timestamp }];
         this.dispatchEvent(
             new CustomEvent('notes-change', {
                 detail: { value: this.notes },
@@ -159,7 +162,7 @@ export class SidePanel extends LitElement {
             </div>
             <div class="notes">
                 <textarea
-                    .value=${this.notes}
+                    .value=${this.notes[0]?.text || ''}
                     @input=${this._onNotesChange}
                     placeholder="Notes..."
                 ></textarea>

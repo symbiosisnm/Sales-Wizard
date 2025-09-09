@@ -144,7 +144,7 @@ export class CheatingDaddyApp extends LitElement {
         advancedMode: { type: Boolean },
         sessionId: { type: String },
         transcripts: { type: Array },
-        notes: { type: String },
+        notes: { type: Array },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -174,7 +174,7 @@ export class CheatingDaddyApp extends LitElement {
         this.shouldAnimateResponse = false;
         this.sessionId = null;
         this.transcripts = [];
-        this.notes = '';
+        this.notes = [];
         this.audioLevel = 0;
 
         // Apply layout mode to document root
@@ -415,12 +415,12 @@ export class CheatingDaddyApp extends LitElement {
         this.startTime = Date.now();
         this.sessionId = self.crypto?.randomUUID?.() ?? Date.now().toString();
         this.transcripts = [];
-        this.notes = '';
+        this.notes = [];
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionStart: true, notes: '' }),
+                body: JSON.stringify({ sessionStart: true, notes: [] }),
             });
         } catch (error) {
             logger.error('Failed to start session history:', error);
@@ -483,8 +483,8 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     async handleNotesChange(e) {
-        const newNotes = e?.detail?.value ?? e?.target?.value ?? '';
-        this.notes = newNotes;
+        const newNotes = e?.detail?.value ?? e?.target?.value ?? [];
+        this.notes = Array.isArray(newNotes) ? newNotes : [];
         if (!this.sessionId) return;
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {

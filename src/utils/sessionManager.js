@@ -190,12 +190,12 @@ async function sendImage(geminiSessionRef, data) {
  *
  * @param {Object} opts
  * @param {string} [opts.format='json'] - Export format: 'json' or 'markdown'.
- * @param {string} [opts.notes=''] - Session notes to include.
+ * @param {Array<{text: string, type: string, timestamp: number}>} [opts.notes=[]] - Session notes to include.
  * @param {string} [opts.profile=''] - Selected profile name for metadata.
  * @param {Object} [opts.session] - Optional session data { sessionId, history }.
  * @returns {{ blob: Blob, filename: string }}
  */
-function exportSession({ format = 'json', notes = '', profile = '', session } = {}) {
+function exportSession({ format = 'json', notes = [], profile = '', session } = {}) {
     const exportedAt = new Date().toISOString();
 
     let sessionId;
@@ -221,8 +221,14 @@ function exportSession({ format = 'json', notes = '', profile = '', session } = 
 
     if (format === 'markdown' || format === 'md') {
         const lines = [`# Session ${sessionId}`, '', `- Profile: ${profile}`, `- Exported: ${exportedAt}`, ''];
-        if (notes) {
-            lines.push('## Notes', notes, '');
+        if (Array.isArray(notes) && notes.length > 0) {
+            lines.push('## Notes');
+            notes.forEach(note => {
+                const ts = new Date(note.timestamp).toISOString();
+                const type = note.type || 'note';
+                lines.push(`- (${ts}) [${type}] ${note.text}`);
+            });
+            lines.push('');
         }
         lines.push('## Conversation');
         history.forEach(turn => {

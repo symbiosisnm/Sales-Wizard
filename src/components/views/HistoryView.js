@@ -438,7 +438,7 @@ export class HistoryView extends LitElement {
             this.loading = true;
             const res = await fetch(`${API_BASE}/history/${sessionId}`);
             const data = await res.json();
-            this.selectedSession = { ...data, notes: data.notes || '' };
+            this.selectedSession = { ...data, notes: Array.isArray(data.notes) ? data.notes : [] };
         } catch (error) {
             logger.error('Error loading session transcript:', error);
         } finally {
@@ -469,7 +469,7 @@ export class HistoryView extends LitElement {
                     sessionId: this.selectedSession.id,
                     history: this.selectedSession.conversationHistory || [],
                 },
-                notes: this.selectedSession.notes || '',
+                notes: this.selectedSession.notes || [],
                 profile: this.selectedSession.profile || localStorage.getItem('selectedProfile') || '',
             });
             if (res?.success) {
@@ -652,11 +652,15 @@ export class HistoryView extends LitElement {
                 </div>
             </div>
             <div class="conversation-view">
-                ${notes
+                ${Array.isArray(notes) && notes.length > 0
                     ? html`
                           <div class="session-notes">
                               <div class="session-notes-title">Notes</div>
-                              <div class="session-notes-content">${notes}</div>
+                              <div class="session-notes-content">
+                                  ${notes.map(
+                                      note => html`<div class="note-item">${note.text}</div>`
+                                  )}
+                              </div>
                           </div>
                       `
                     : ''}
