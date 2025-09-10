@@ -1,3 +1,4 @@
+require('dotenv').config();
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
