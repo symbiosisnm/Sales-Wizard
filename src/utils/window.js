@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const os = require('os');
 const { applyStealthMeasures, startTitleRandomization } = require('./stealthFeatures');
 
+const STEALTH = process.env.STEALTH === '1';
+
 let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
@@ -37,8 +39,6 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         transparent: true,
         hasShadow: false,
         alwaysOnTop: true,
-        skipTaskbar: true,
-        hiddenInMissionControl: true,
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -62,7 +62,6 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     );
 
     mainWindow.setResizable(false);
-    mainWindow.setContentProtection(true);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     // Center window at the top of the screen
@@ -84,11 +83,10 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         logger.info(`Set window title to: ${randomNames.windowTitle}`);
     }
 
-    // Apply stealth measures
-    applyStealthMeasures(mainWindow);
-
-    // Start periodic title randomization for additional stealth
-    startTitleRandomization(mainWindow);
+    if (STEALTH) {
+        applyStealthMeasures(mainWindow);
+        startTitleRandomization(mainWindow);
+    }
 
     // After window is created, check for layout preference and resize if needed
     mainWindow.webContents.once('dom-ready', () => {
@@ -122,14 +120,13 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                         logger.info('Content protection loaded from settings:', contentProtection);
                     } catch (error) {
                         logger.error('Error loading content protection:', error);
-                        mainWindow.setContentProtection(true);
+                        mainWindow.setContentProtection(STEALTH);
                     }
 
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 })
                 .catch(() => {
-                    // Default to content protection enabled
-                    mainWindow.setContentProtection(true);
+                    mainWindow.setContentProtection(STEALTH);
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 });
         }, 150);
