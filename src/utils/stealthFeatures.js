@@ -1,12 +1,18 @@
 // stealthFeatures.js - Additional stealth features for process hiding
 
 const { getCurrentRandomDisplayName } = require('./processNames');
+const { app } = require('electron');
+
+const STEALTH = process.env.STEALTH === '1';
 
 /**
  * Apply additional stealth measures to the Electron application
  * @param {BrowserWindow} mainWindow - The main application window
  */
 function applyStealthMeasures(mainWindow) {
+    if (!STEALTH) {
+        return;
+    }
     logger.info('Applying additional stealth measures...');
 
     // Hide from alt-tab on Windows
@@ -19,20 +25,17 @@ function applyStealthMeasures(mainWindow) {
         }
     }
 
-    // Hide from Mission Control on macOS
+    // Hide from Dock and Mission Control on macOS
     if (process.platform === 'darwin') {
         try {
+            app.dock?.hide?.();
             mainWindow.setHiddenInMissionControl(true);
-            logger.info('Hidden from macOS Mission Control');
+            logger.info('Hidden from macOS Dock and Mission Control');
         } catch (error) {
-            logger.warn('Could not hide from Mission Control:', error.message);
+            logger.warn('Could not hide from Dock/Mission Control:', error.message);
         }
-    }
 
-    // Set random app name in menu bar (macOS)
-    if (process.platform === 'darwin') {
         try {
-            const { app } = require('electron');
             const randomName = getCurrentRandomDisplayName();
             app.setName(randomName);
             logger.info(`Set app name to: ${randomName}`);

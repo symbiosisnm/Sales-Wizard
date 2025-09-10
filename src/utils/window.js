@@ -1,8 +1,10 @@
-const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
+const { BrowserWindow, globalShortcut, ipcMain, screen, app } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('os');
 const { applyStealthMeasures, startTitleRandomization } = require('./stealthFeatures');
+
+const STEALTH = process.env.STEALTH === '1';
 
 let mouseEventsIgnored = false;
 let windowResizing = false;
@@ -27,18 +29,22 @@ function ensureDataDirectories() {
 
 function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     // Get layout preference (default to 'normal')
-    let windowWidth = 1100;
-    let windowHeight = 600;
+    let windowWidth = 840;
+    let windowHeight = 460;
 
     const mainWindow = new BrowserWindow({
         width: windowWidth,
         height: windowHeight,
+        show: false,
         frame: false,
         transparent: true,
         hasShadow: false,
+        resizable: true,
+        movable: true,
+        focusable: true,
         alwaysOnTop: true,
-        skipTaskbar: true,
-        hiddenInMissionControl: true,
+        backgroundColor: '#00000000',
+        skipTaskbar: false,
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -48,7 +54,6 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
             webSecurity: true,
             allowRunningInsecureContent: false,
         },
-        backgroundColor: '#00000000',
     });
 
     const { session, desktopCapturer } = require('electron');
@@ -61,9 +66,21 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         { useSystemPicker: true }
     );
 
-    mainWindow.setResizable(false);
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    if (process.platform === 'darwin') {
+        try {
+            app.setActivationPolicy('regular');
+        } catch (e) {
+            // ignore: best effort only
+        }
+    }
     mainWindow.setContentProtection(true);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+        mainWindow.focus();
+    });
 
     // Center window at the top of the screen
     const primaryDisplay = screen.getPrimaryDisplay();
@@ -71,10 +88,6 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     const x = Math.floor((screenWidth - windowWidth) / 2);
     const y = 0;
     mainWindow.setPosition(x, y);
-
-    if (process.platform === 'win32') {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-    }
 
     mainWindow.loadFile(path.join(__dirname, '../index.html'));
 
@@ -84,11 +97,10 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         logger.info(`Set window title to: ${randomNames.windowTitle}`);
     }
 
-    // Apply stealth measures
-    applyStealthMeasures(mainWindow);
-
-    // Start periodic title randomization for additional stealth
-    startTitleRandomization(mainWindow);
+    if (STEALTH) {
+        applyStealthMeasures(mainWindow);
+        startTitleRandomization(mainWindow);
+    }
 
     // After window is created, check for layout preference and resize if needed
     mainWindow.webContents.once('dom-ready', () => {
@@ -453,8 +465,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
 
                     // Check if window is still valid before final operations
                     if (!mainWindow.isDestroyed()) {
-                        mainWindow.setResizable(false);
-
                         // Ensure final size is exact
                         mainWindow.setSize(targetWidth, targetHeight);
                         const finalX = Math.floor((screenWidth - targetWidth) / 2);
