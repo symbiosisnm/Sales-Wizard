@@ -36,9 +36,11 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         frame: false,
         transparent: true,
         hasShadow: false,
+        show: false,
+        resizable: true,
+        movable: true,
+        focusable: true,
         alwaysOnTop: true,
-        skipTaskbar: true,
-        hiddenInMissionControl: true,
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -51,6 +53,14 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         backgroundColor: '#00000000',
     });
 
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.setContentProtection(true);
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+        mainWindow.focus();
+    });
+
     const { session, desktopCapturer } = require('electron');
     session.defaultSession.setDisplayMediaRequestHandler(
         (request, callback) => {
@@ -61,20 +71,12 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         { useSystemPicker: true }
     );
 
-    mainWindow.setResizable(false);
-    mainWindow.setContentProtection(true);
-    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
     // Center window at the top of the screen
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth } = primaryDisplay.workAreaSize;
     const x = Math.floor((screenWidth - windowWidth) / 2);
     const y = 0;
     mainWindow.setPosition(x, y);
-
-    if (process.platform === 'win32') {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-    }
 
     mainWindow.loadFile(path.join(__dirname, '../index.html'));
 
