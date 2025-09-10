@@ -19,6 +19,20 @@ A real-time AI assistant that provides contextual help during video calls, inter
 - **Click-through Mode**: Make window transparent to clicks when needed
 - **Cross-platform**: Works on macOS, Windows, and Linux (kinda, dont use, just for testing rn)
 
+## Liquid Glass Mobile Demo
+
+The repository includes a Flutter demonstration of a "liquid glass" task manager UI located in `apps/liquid_glass_task_manager`. It showcases translucent panels, animated glass cards, and dynamic theming built with the `liquid_glass_renderer` package.
+
+### Running the demo
+
+1. Install Flutter 3.0 or later.
+2. Fetch dependencies and launch the app:
+   ```bash
+   cd apps/liquid_glass_task_manager
+   flutter pub get
+   flutter run
+   ```
+
 ## Setup
 
 1. **Get a Gemini API Key**: Visit [Google AI Studio](https://aistudio.google.com/apikey)
