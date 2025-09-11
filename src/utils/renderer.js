@@ -1,12 +1,11 @@
 // renderer.js
-const electron = window.electron || {};
+const ipcRenderer = (window.electron?.ipcRenderer) ?? require('electron').ipcRenderer;
 
 // Initialize random display name for UI components
 window.randomDisplayName = null;
 
 // Request random display name from main process
-electron
-    .getRandomDisplayName?.()
+window.electron?.getRandomDisplayName?.()
     .then(name => {
         window.randomDisplayName = name;
         logger.info('Set random display name:', name);
@@ -59,10 +58,10 @@ startCursorTracking();
 
 // Periodically fetch active window bounds from main process
 function startActiveWindowTracking() {
-    if (!window.electron?.ipcRenderer) return;
+    if (!ipcRenderer) return;
     const poll = async () => {
         try {
-            const res = await window.electron.ipcRenderer.invoke('get-active-window');
+            const res = await ipcRenderer.invoke('get-active-window');
             if (res?.success) lastActiveWindow = res;
         } catch (_e) {
             /* empty */
@@ -212,7 +211,7 @@ async function createPcmWorkletNode(ctx, onChunk) {
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     let apiKey = null;
     try {
-        const res = await electron.secureGetApiKey?.();
+        const res = await window.electron?.secureGetApiKey?.();
         if (res?.success && res.value) apiKey = res.value.trim();
     } catch (_e) {
         /* empty */
@@ -221,7 +220,7 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
         apiKey = localStorage.getItem('apiKey')?.trim();
     }
     if (apiKey) {
-        const success = await electron.initializeGemini?.(
+        const success = await window.electron?.initializeGemini?.(
             apiKey,
             localStorage.getItem('customPrompt') || '',
             profile,
@@ -236,7 +235,7 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
 }
 
 // Listen for status updates
-electron.onUpdateStatus?.((_event, status) => {
+window.electron?.onUpdateStatus?.((_event, status) => {
     logger.info('Status update:', status);
     cheddar.setStatus(status);
 });
@@ -269,7 +268,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             logger.info('Starting macOS capture with SystemAudioDump...');
 
             // Start macOS audio capture
-            const audioResult = await electron.startMacosAudio?.();
+            const audioResult = await window.electron?.startMacosAudio?.();
             if (!audioResult.success) {
                 throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
             }
@@ -387,7 +386,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             });
             screenCapturer.onFrame(async ({ data, width, height }) => {
                 try {
-                    const result = await electron.sendImageContent?.({ data });
+                    const result = await window.electron?.sendImageContent?.({ data });
                     if (result.success) {
                         const imageTokens = tokenTracker.calculateImageTokens(width, height);
                         tokenTracker.addTokens(imageTokens, 'image');
@@ -413,7 +412,7 @@ async function setupLinuxMicProcessing(micStream) {
 
     const workletNode = await createPcmWorkletNode(micAudioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await electron.sendAudioContent?.({
+        await window.electron?.sendAudioContent?.({
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -440,7 +439,7 @@ async function setupLinuxMicProcessing(micStream) {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await electron.sendAudioContent?.({
+            await window.electron?.sendAudioContent?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -459,7 +458,7 @@ async function setupLinuxSystemAudioProcessing() {
 
     const node = await createPcmWorkletNode(audioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await electron.sendAudioContent?.({
+        await window.electron?.sendAudioContent?.({
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -486,7 +485,7 @@ async function setupLinuxSystemAudioProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await electron.sendAudioContent?.({
+            await window.electron?.sendAudioContent?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -504,7 +503,7 @@ async function setupWindowsLoopbackProcessing() {
 
     const node = await createPcmWorkletNode(audioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await electron.sendAudioContent?.({
+        await window.electron?.sendAudioContent?.({
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -531,7 +530,7 @@ async function setupWindowsLoopbackProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await electron.sendAudioContent?.({
+            await window.electron?.sendAudioContent?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -561,7 +560,7 @@ async function enableMicStreaming() {
 
         const node = await createPcmWorkletNode(pttMicContext, async bytes => {
             const base64Data = arrayBufferToBase64(bytes.buffer);
-            await electron.sendAudioContent?.({
+            await window.electron?.sendAudioContent?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -581,7 +580,7 @@ async function enableMicStreaming() {
                     const chunk = micBuf.splice(0, samplesPerChunk);
                     const pcm16 = convertFloat32ToInt16(chunk);
                     const base64Data = arrayBufferToBase64(pcm16.buffer);
-                    await electron.sendAudioContent?.({
+                    await window.electron?.sendAudioContent?.({
                         data: base64Data,
                         mimeType: 'audio/pcm;rate=24000',
                     });
@@ -754,7 +753,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                     }
 
                     try {
-                        const result = await electron.sendImageContent?.({
+                        const result = await window.electron?.sendImageContent?.({
                             data: base64data,
                         });
 
@@ -831,7 +830,7 @@ function stopCapture() {
 
     // Stop macOS audio capture if running
     if (isMacOS) {
-        electron.stopMacosAudio?.().catch(err => {
+        window.electron?.stopMacosAudio?.().catch(err => {
             logger.error('Error stopping macOS audio:', err);
         });
     }
@@ -854,7 +853,7 @@ async function sendTextMessage(text) {
     }
 
     try {
-        const result = await electron.sendTextMessage?.(text);
+        const result = await window.electron?.sendTextMessage?.(text);
         if (result.success) {
             logger.info('Text message sent successfully');
         } else {
@@ -950,7 +949,7 @@ async function getAllConversationSessions() {
 }
 
 // Listen for conversation data from main process
-electron.onSaveConversationTurn?.(async (_event, data) => {
+window.electron?.onSaveConversationTurn?.(async (_event, data) => {
     try {
         await saveConversationSession(data.sessionId, data.fullHistory);
         logger.info('Conversation session saved:', data.sessionId);
