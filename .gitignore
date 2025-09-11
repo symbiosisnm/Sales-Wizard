@@ -62,8 +62,7 @@ pendingTurns.json
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
+# dotenv environment variables
 .env.test
 
 # parcel-bundler cache (https://parceljs.org/)

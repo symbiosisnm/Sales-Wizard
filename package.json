@@ -6,11 +6,11 @@
   "main": "src/index.js",
   "scripts": {
     "start": "concurrently \"npm run start:backend\" \"npm run start:electron\"",
-    "start:electron": "electron-forge start",
+    "start:electron": "node -r dotenv/config node_modules/.bin/electron-forge start",
     "start:backend": "node backend/server.js",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
+    "package": "node -r dotenv/config node_modules/.bin/electron-forge package",
+    "make": "node -r dotenv/config node_modules/.bin/electron-forge make",
+    "publish": "node -r dotenv/config node_modules/.bin/electron-forge publish",
     "lint": "eslint .",
     "test": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
     "format": "prettier --write ."
