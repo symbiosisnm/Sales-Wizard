@@ -84,18 +84,8 @@ function setupGeneralIpcHandlers() {
     });
 
     ipcMain.handle('update-content-protection', async () => {
-        try {
-            if (mainWindow) {
-                // Get content protection setting from localStorage via cheddar
-                const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
-                mainWindow.setContentProtection(contentProtection);
-                logger.info('Content protection updated:', contentProtection);
-            }
-            return { success: true };
-        } catch (error) {
-            logger.error('Error updating content protection:', error);
-            return { success: false, error: error.message };
-        }
+        // Content protection updates are disabled; maintain false state.
+        return { success: true };
     });
 
     ipcMain.handle('get-random-display-name', async () => {

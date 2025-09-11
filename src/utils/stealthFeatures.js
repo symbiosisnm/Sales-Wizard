@@ -44,14 +44,6 @@ function applyStealthMeasures(mainWindow) {
         }
     }
 
-    // Prevent screenshots if content protection is enabled
-    try {
-        mainWindow.setContentProtection(true);
-        logger.info('Content protection enabled');
-    } catch (error) {
-        logger.warn('Could not enable content protection:', error.message);
-    }
-
     // Randomize window user agent
     try {
         const userAgents = [

@@ -2,10 +2,6 @@ const { BrowserWindow, globalShortcut, ipcMain, screen, app } = require('electro
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('os');
-const { applyStealthMeasures, startTitleRandomization } = require('./stealthFeatures');
-
-const STEALTH = process.env.STEALTH === '1';
-
 let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
@@ -45,6 +41,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
         alwaysOnTop: true,
         backgroundColor: '#00000000',
         skipTaskbar: false,
+        contentProtection: false,
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
             nodeIntegration: false,
@@ -74,7 +71,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
             // ignore: best effort only
         }
     }
-    mainWindow.setContentProtection(true);
+    mainWindow.setContentProtection(false);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     mainWindow.once('ready-to-show', () => {
@@ -95,11 +92,6 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     if (randomNames && randomNames.windowTitle) {
         mainWindow.setTitle(randomNames.windowTitle);
         logger.info(`Set window title to: ${randomNames.windowTitle}`);
-    }
-
-    if (STEALTH) {
-        applyStealthMeasures(mainWindow);
-        startTitleRandomization(mainWindow);
     }
 
     // After window is created, check for layout preference and resize if needed
@@ -127,21 +119,9 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                         keybinds = { ...defaultKeybinds, ...savedSettings.keybinds };
                     }
 
-                    // Apply content protection setting via IPC handler
-                    try {
-                        const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
-                        mainWindow.setContentProtection(contentProtection);
-                        logger.info('Content protection loaded from settings:', contentProtection);
-                    } catch (error) {
-                        logger.error('Error loading content protection:', error);
-                        mainWindow.setContentProtection(true);
-                    }
-
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 })
                 .catch(() => {
-                    // Default to content protection enabled
-                    mainWindow.setContentProtection(true);
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 });
         }, 150);
