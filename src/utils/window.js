@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const os = require('os');
 const { applyStealthMeasures, startTitleRandomization } = require('./stealthFeatures');
 
+const logger = globalThis.logger || console;
+
 const STEALTH = process.env.STEALTH === '1';
 
 let mouseEventsIgnored = false;
@@ -32,7 +34,10 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     let windowWidth = 840;
     let windowHeight = 460;
 
-    const mainWindow = new BrowserWindow({
+    const isMac = process.platform === 'darwin';
+    const isWindows = process.platform === 'win32';
+
+    const windowOptions = {
         width: windowWidth,
         height: windowHeight,
         show: false,
@@ -54,7 +59,33 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
             webSecurity: true,
             allowRunningInsecureContent: false,
         },
-    });
+    };
+
+    if (isMac) {
+        windowOptions.vibrancy = 'window';
+        windowOptions.visualEffectState = 'active';
+    } else if (isWindows) {
+        windowOptions.backgroundMaterial = 'acrylic';
+    }
+
+    const mainWindow = new BrowserWindow(windowOptions);
+
+    if (isMac) {
+        try {
+            mainWindow.setVibrancy('window');
+            if (typeof mainWindow.setVisualEffectState === 'function') {
+                mainWindow.setVisualEffectState('active');
+            }
+        } catch (error) {
+            logger.warn('Unable to enable macOS vibrancy:', error);
+        }
+    } else if (isWindows && typeof mainWindow.setBackgroundMaterial === 'function') {
+        try {
+            mainWindow.setBackgroundMaterial('acrylic');
+        } catch (error) {
+            logger.warn('Unable to enable Windows background material:', error);
+        }
+    }
 
     const { session, desktopCapturer } = require('electron');
     session.defaultSession.setDisplayMediaRequestHandler(

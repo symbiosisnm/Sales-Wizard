@@ -15,9 +15,23 @@ export class AppHeader extends LitElement {
             display: flex;
             align-items: center;
             padding: var(--header-padding);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--glass-border-strong, var(--border-color));
             background: var(--header-background);
             border-radius: var(--border-radius);
+            backdrop-filter: var(--glass-backdrop-filter-strong, blur(26px) saturate(160%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter-strong, blur(26px) saturate(160%));
+            box-shadow: var(--glass-shadow, 0 18px 40px rgba(9, 14, 29, 0.4));
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            box-shadow: var(--glass-edge-highlight, inset 0 1px 0 rgba(255, 255, 255, 0.35));
         }
 
         .header-title {
@@ -42,17 +56,19 @@ export class AppHeader extends LitElement {
         .button {
             background: var(--button-background);
             color: var(--text-color);
-            border: 1px solid var(--button-border);
+            border: 1px solid var(--glass-border, var(--button-border));
             padding: var(--header-button-padding);
             border-radius: 8px;
             font-size: var(--header-font-size-small);
             font-weight: 500;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
         .icon-button {
             background: none;
             color: var(--icon-button-color);
-            border: none;
+            border: 1px solid transparent;
             padding: var(--header-icon-padding);
             border-radius: 8px;
             font-size: var(--header-font-size-small);
@@ -69,6 +85,7 @@ export class AppHeader extends LitElement {
 
         .icon-button:hover {
             background: var(--hover-background);
+            border-color: var(--glass-border, var(--button-border));
             opacity: 1;
         }
 
