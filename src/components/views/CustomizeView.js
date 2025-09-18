@@ -903,16 +903,27 @@ export class CustomizeView extends LitElement {
 
     updateBackgroundTransparency() {
         const root = document.documentElement;
-        root.style.setProperty('--header-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
-        root.style.setProperty('--main-content-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
-        root.style.setProperty('--card-background', `rgba(255, 255, 255, ${this.backgroundTransparency * 0.05})`);
-        root.style.setProperty('--input-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.375})`);
-        root.style.setProperty('--input-focus-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
-        root.style.setProperty('--button-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
-        root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 1.125})`);
-        root.style.setProperty('--screen-option-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
-        root.style.setProperty('--screen-option-hover-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.75})`);
-        root.style.setProperty('--scrollbar-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
+        const baseTransparency = this.backgroundTransparency;
+        const glassBorderAlpha = Math.min(0.35, baseTransparency * 0.3 + 0.08);
+
+        root.style.setProperty('--glass-border', `rgba(255, 255, 255, ${glassBorderAlpha})`);
+        root.style.setProperty('--glass-border-strong', `rgba(255, 255, 255, ${Math.min(0.5, glassBorderAlpha + 0.12)})`);
+        root.style.setProperty('--header-background', `rgba(0, 0, 0, ${baseTransparency})`);
+        root.style.setProperty('--main-content-background', `rgba(0, 0, 0, ${baseTransparency})`);
+        root.style.setProperty('--panel-background', `rgba(0, 0, 0, ${baseTransparency})`);
+        root.style.setProperty('--response-background', `rgba(0, 0, 0, ${baseTransparency})`);
+        root.style.setProperty('--card-background', `rgba(255, 255, 255, ${baseTransparency * 0.05})`);
+        root.style.setProperty('--panel-surface-background', `rgba(255, 255, 255, ${baseTransparency * 0.06})`);
+        root.style.setProperty('--panel-footer-background', `rgba(255, 255, 255, ${baseTransparency * 0.08})`);
+        root.style.setProperty('--panel-input-background', `rgba(0, 0, 0, ${baseTransparency * 0.45})`);
+        root.style.setProperty('--glass-quote-background', `rgba(255, 255, 255, ${baseTransparency * 0.12})`);
+        root.style.setProperty('--input-background', `rgba(0, 0, 0, ${baseTransparency * 0.375})`);
+        root.style.setProperty('--input-focus-background', `rgba(0, 0, 0, ${baseTransparency * 0.625})`);
+        root.style.setProperty('--button-background', `rgba(0, 0, 0, ${baseTransparency * 0.625})`);
+        root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${baseTransparency * 1.125})`);
+        root.style.setProperty('--screen-option-background', `rgba(0, 0, 0, ${baseTransparency * 0.5})`);
+        root.style.setProperty('--screen-option-hover-background', `rgba(0, 0, 0, ${baseTransparency * 0.75})`);
+        root.style.setProperty('--scrollbar-background', `rgba(0, 0, 0, ${baseTransparency * 0.5})`);
     }
 
     loadFontSize() {

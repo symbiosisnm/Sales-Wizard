@@ -19,11 +19,25 @@ export class AssistantView extends LitElement {
             border-radius: 10px;
             font-size: var(--response-font-size, 18px);
             line-height: 1.6;
-            background: var(--main-content-background);
+            background: var(--response-background, var(--main-content-background));
+            border: 1px solid var(--glass-border, var(--border-color));
             padding: 16px;
             scroll-behavior: smooth;
             user-select: text;
             cursor: text;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            box-shadow: var(--glass-shadow-soft, 0 16px 40px rgba(8, 12, 24, 0.35));
+            position: relative;
+        }
+
+        .response-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            box-shadow: var(--glass-edge-highlight, inset 0 1px 0 rgba(255, 255, 255, 0.35));
         }
 
         /* Allow text selection for all content within the response container */
@@ -102,8 +116,11 @@ export class AssistantView extends LitElement {
             margin: 1em 0;
             padding: 0.5em 1em;
             border-left: 4px solid var(--focus-border-color);
-            background: rgba(0, 122, 255, 0.1);
+            background: var(--glass-quote-background, rgba(255, 255, 255, 0.08));
             font-style: italic;
+            border-radius: 8px;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
         .response-container code {
@@ -115,12 +132,14 @@ export class AssistantView extends LitElement {
         }
 
         .response-container pre {
-            background: var(--input-background);
-            border: 1px solid var(--button-border);
+            background: var(--panel-surface-background, rgba(255, 255, 255, 0.05));
+            border: 1px solid var(--glass-border, var(--button-border));
             border-radius: 6px;
             padding: 1em;
             overflow-x: auto;
             margin: 1em 0;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
         .response-container pre code {
@@ -151,7 +170,7 @@ export class AssistantView extends LitElement {
 
         .response-container hr {
             border: none;
-            border-top: 1px solid var(--border-color);
+            border-top: 1px solid var(--glass-border, var(--border-color));
             margin: 2em 0;
         }
 
@@ -163,13 +182,13 @@ export class AssistantView extends LitElement {
 
         .response-container th,
         .response-container td {
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--glass-border, var(--border-color));
             padding: 0.5em;
             text-align: left;
         }
 
         .response-container th {
-            background: var(--input-background);
+            background: var(--panel-surface-background, rgba(255, 255, 255, 0.05));
             font-weight: 600;
         }
 

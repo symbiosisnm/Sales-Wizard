@@ -6,21 +6,40 @@ export class SidePanel extends LitElement {
             display: flex;
             flex-direction: column;
             height: 100%;
-            background: var(--main-content-background);
-            border-left: 1px solid var(--border-color);
+            width: var(--side-panel-width, 320px);
+            flex: 0 0 var(--side-panel-width, 320px);
+            max-width: var(--side-panel-max-width, 360px);
+            background: var(--panel-background, var(--main-content-background));
+            border-left: 1px solid var(--glass-border-strong, var(--border-color));
             color: var(--text-color);
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            box-shadow: var(--glass-panel-shadow, -12px 0 28px rgba(8, 12, 24, 0.35));
+            position: relative;
+            overflow: hidden;
+        }
+
+        :host::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: 0;
+            box-shadow: var(--glass-edge-highlight, inset 0 1px 0 rgba(255, 255, 255, 0.35));
         }
 
         .transcripts {
             flex: 1;
             overflow-y: auto;
             padding: var(--main-content-padding);
+            background: var(--panel-surface-background, rgba(255, 255, 255, 0.02));
+            backdrop-filter: inherit;
         }
 
         .transcript-item:not(:last-child) {
             margin-bottom: 16px;
             padding-bottom: 12px;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--glass-border, var(--border-color));
         }
 
         .transcription,
@@ -32,8 +51,10 @@ export class SidePanel extends LitElement {
 
         .notes {
             flex: 0 0 auto;
-            border-top: 1px solid var(--border-color);
+            border-top: 1px solid var(--glass-border, var(--border-color));
             padding: var(--main-content-padding);
+            background: var(--panel-footer-background, rgba(255, 255, 255, 0.04));
+            backdrop-filter: inherit;
         }
 
         .notes-actions {
@@ -46,11 +67,13 @@ export class SidePanel extends LitElement {
         .save-button {
             background: var(--button-background);
             color: var(--text-color);
-            border: 1px solid var(--button-border);
+            border: 1px solid var(--glass-border, var(--button-border));
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 12px;
             cursor: pointer;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
         .save-button:hover {
@@ -60,10 +83,12 @@ export class SidePanel extends LitElement {
         .format-select {
             background: var(--button-background);
             color: var(--text-color);
-            border: 1px solid var(--button-border);
+            border: 1px solid var(--glass-border, var(--button-border));
             padding: 4px 6px;
             border-radius: 4px;
             font-size: 12px;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
         textarea {
@@ -71,13 +96,15 @@ export class SidePanel extends LitElement {
             height: 100%;
             min-height: 120px;
             padding: 10px;
-            background: var(--input-background);
+            background: var(--panel-input-background, var(--input-background));
             color: var(--text-color);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--glass-border, var(--border-color));
             border-radius: var(--border-radius);
             resize: vertical;
             font-family: inherit;
             font-size: 14px;
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
         textarea::placeholder {
