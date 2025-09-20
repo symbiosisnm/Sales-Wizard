@@ -227,9 +227,9 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
             language
         );
         if (success) {
-            cheddar.setStatus('Live');
+            salesWizard.setStatus('Live');
         } else {
-            cheddar.setStatus('error');
+            salesWizard.setStatus('error');
         }
     }
 }
@@ -237,13 +237,13 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
 // Listen for status updates
 window.electron?.onUpdateStatus?.((_event, status) => {
     logger.info('Status update:', status);
-    cheddar.setStatus(status);
+    salesWizard.setStatus(status);
 });
 
-// Listen for responses - REMOVED: This is handled in CheatingDaddyApp.js to avoid duplicates
+// Listen for responses - REMOVED: This is handled in SalesWizardApp.js to avoid duplicates
 // ipcRenderer.on('update-response', (event, response) => {
 //     logger.info('Gemini response:', response);
-//     cheddar.e().setResponse(response);
+//     salesWizard.e().setResponse(response);
 //     // You can add UI elements to display the response if needed
 // });
 
@@ -401,7 +401,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
         }
     } catch (err) {
         logger.error('Error starting capture:', err);
-        cheddar.setStatus('error');
+        salesWizard.setStatus('error');
     }
 }
 
@@ -614,7 +614,7 @@ function disableMicStreaming() {
     }
 }
 
-window.addEventListener('cheddar-toggle-mic', async () => {
+window.addEventListener('salesWizard-toggle-mic', async () => {
     if (micEnabled) {
         disableMicStreaming();
     } else {
@@ -963,11 +963,11 @@ initConversationStorage().catch(logger.error);
 
 // Handle shortcuts based on current view
 function handleShortcut(shortcutKey) {
-    const currentView = cheddar.getCurrentView();
+    const currentView = salesWizard.getCurrentView();
 
     if (shortcutKey === 'ctrl+enter' || shortcutKey === 'cmd+enter') {
         if (currentView === 'main') {
-            cheddar.element().handleStart();
+            salesWizard.element().handleStart();
         } else {
             captureManualScreenshot();
         }
@@ -975,21 +975,21 @@ function handleShortcut(shortcutKey) {
 }
 
 // Create reference to the main app element
-const cheatingDaddyApp = document.querySelector('cheating-daddy-app');
+const salesWizardAppElement = document.querySelector('sales-wizard-app');
 
-// Consolidated cheddar object - all functions in one place
-const cheddar = {
+// Consolidated salesWizard object - all functions in one place
+const salesWizard = {
     // Element access
-    element: () => cheatingDaddyApp,
-    e: () => cheatingDaddyApp,
+    element: () => salesWizardAppElement,
+    e: () => salesWizardAppElement,
 
     // App state functions - access properties directly from the app element
-    getCurrentView: () => cheatingDaddyApp.currentView,
-    getLayoutMode: () => cheatingDaddyApp.layoutMode,
+    getCurrentView: () => salesWizardAppElement.currentView,
+    getLayoutMode: () => salesWizardAppElement.layoutMode,
 
     // Status and response functions
-    setStatus: text => cheatingDaddyApp.setStatus(text),
-    setResponse: response => cheatingDaddyApp.setResponse(response),
+    setStatus: text => salesWizardAppElement.setStatus(text),
+    setResponse: response => salesWizardAppElement.setResponse(response),
 
     // Core functionality
     initializeGemini,
@@ -1018,4 +1018,4 @@ const cheddar = {
 };
 
 // Make it globally available
-window.cheddar = cheddar;
+window.salesWizard = salesWizard;

@@ -70,7 +70,7 @@ The repository includes a Flutter demonstration of a "liquid glass" task manager
 
 ## Real-Time Streaming
 
-Cheating Daddy can stream microphone audio and periodic screen captures to a
+Sales Wizard can stream microphone audio and periodic screen captures to a
 backend for live model interaction. The following sections outline the
 requirements and configuration for this feature.
 
@@ -94,7 +94,7 @@ requirements and configuration for this feature.
 
 | Variable         | Description                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------- |
-| `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Cheating Daddy`.              |
+| `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Sales Wizard`.                |
 | `AUTH_TOKEN`     | Secret token required by the backend to authorize live streaming connections.               |
 | `ALLOWED_ORIGINS`| Comma-separated list of origins permitted to open live WebSocket connections.               |
 

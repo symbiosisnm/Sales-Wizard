@@ -13,7 +13,7 @@ function getKeytar() {
     }
 }
 
-const SERVICE = 'cheating-daddy';
+const SERVICE = 'sales-wizard';
 const ACCOUNT = 'gemini_api_key';
 
 async function secureGetApiKey() {

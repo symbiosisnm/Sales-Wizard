@@ -19,7 +19,7 @@ import defaultLogger from '../../utils/logger.js';
 // Use global logger if available, falling back to the imported logger or console
 const logger = globalThis.logger || defaultLogger || console;
 
-export class CheatingDaddyApp extends LitElement {
+export class SalesWizardApp extends LitElement {
     static styles = css`
         * {
             box-sizing: border-box;
@@ -379,7 +379,7 @@ export class CheatingDaddyApp extends LitElement {
         if (this.currentView === 'customize' || this.currentView === 'help' || this.currentView === 'history') {
             this.currentView = 'main';
         } else if (this.currentView === 'assistant') {
-            cheddar.stopCapture();
+            window.salesWizard?.stopCapture?.();
 
             // Close the session
             if (window.electron?.closeSession) {
@@ -415,9 +415,9 @@ export class CheatingDaddyApp extends LitElement {
             return;
         }
 
-        await cheddar.initializeGemini(this.selectedProfile, this.selectedLanguage);
+        await window.salesWizard.initializeGemini(this.selectedProfile, this.selectedLanguage);
         // Pass the screenshot interval as string (including 'manual' option)
-        cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        window.salesWizard.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
         this.currentResponseIndex = -1;
         this.startTime = Date.now();
@@ -439,7 +439,7 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleAPIKeyHelp() {
         if (window.electron?.openExternal) {
-            await window.electron.openExternal('https://cheatingdaddy.com/help/api-key');
+            await window.electron.openExternal('https://saleswizard.ai/help/api-key');
         }
     }
 
@@ -480,7 +480,7 @@ export class CheatingDaddyApp extends LitElement {
 
     // Assistant view event handlers
     async handleSendText(message) {
-        const result = await window.cheddar.sendTextMessage(message);
+        const result = await window.salesWizard.sendTextMessage(message);
 
         if (!result.success) {
             logger.error('Failed to send message:', result.error);
@@ -688,4 +688,4 @@ export class CheatingDaddyApp extends LitElement {
     }
 }
 
-customElements.define('cheating-daddy-app', CheatingDaddyApp);
+customElements.define('sales-wizard-app', SalesWizardApp);

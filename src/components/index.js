@@ -1,5 +1,5 @@
 // Main app components
-export { CheatingDaddyApp } from './app/CheatingDaddyApp.js';
+export { SalesWizardApp } from './app/SalesWizardApp.js';
 export { AppHeader } from './app/AppHeader.js';
 export { SidePanel } from './app/SidePanel.js';
 export { NoteStreamPanel } from './app/NoteStreamPanel.js';
