@@ -254,7 +254,7 @@ export class HelpView extends LitElement {
     }
 
     getDefaultKeybinds() {
-        const isMac = cheddar.isMacOS || navigator.platform.includes('Mac');
+        const isMac = (window.salesWizard?.isMacOS ?? false) || navigator.platform.includes('Mac');
         return {
             moveUp: isMac ? 'Alt+Up' : 'Ctrl+Up',
             moveDown: isMac ? 'Alt+Down' : 'Ctrl+Down',
@@ -298,10 +298,10 @@ export class HelpView extends LitElement {
                         <span>Community & Support</span>
                     </div>
                     <div class="community-links">
-                        <div class="community-link" @click=${() => this.handleExternalLinkClick('https://cheatingdaddy.com')}>
+                        <div class="community-link" @click=${() => this.handleExternalLinkClick('https://saleswizard.ai')}>
                             🌐 Official Website
                         </div>
-                        <div class="community-link" @click=${() => this.handleExternalLinkClick('https://github.com/sohzm/cheating-daddy')}>
+                        <div class="community-link" @click=${() => this.handleExternalLinkClick('https://github.com/sohzm/sales-wizard')}>
                             📂 GitHub Repository
                         </div>
                         <div class="community-link" @click=${() => this.handleExternalLinkClick('https://discord.gg/GCBdubnXfJ')}>

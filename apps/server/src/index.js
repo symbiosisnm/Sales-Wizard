@@ -56,7 +56,7 @@ app.post('/api/ephemeral-token', async (req, res) => {
   }
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'cheating-daddy-server' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'sales-wizard-server' }));
 
 // Create HTTP server so we can handle WS upgrades.
 const httpServer = http.createServer(app);

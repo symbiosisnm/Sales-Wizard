@@ -86,7 +86,27 @@ function analyzeAudioBuffer(buffer, label = 'Audio') {
 // Save audio buffer with metadata for debugging
 function saveDebugAudio(buffer, type, timestamp = Date.now()) {
     const homeDir = require('os').homedir();
-    const debugDir = path.join(homeDir, 'cheddar', 'debug');
+    const debugDir = path.join(homeDir, 'sales-wizard', 'debug');
+    const legacyDebugDir = path.join(homeDir, 'cheddar', 'debug');
+
+    if (!fs.existsSync(debugDir) && fs.existsSync(legacyDebugDir)) {
+        try {
+            const salesWizardBaseDir = path.join(homeDir, 'sales-wizard');
+            if (!fs.existsSync(salesWizardBaseDir)) {
+                fs.mkdirSync(salesWizardBaseDir, { recursive: true });
+            }
+            fs.renameSync(legacyDebugDir, debugDir);
+            logger?.info?.('Migrated audio debug directory to sales-wizard');
+        } catch (renameError) {
+            logger?.warn?.('Failed to migrate audio debug directory via rename, attempting copy', renameError);
+            try {
+                fs.cpSync(legacyDebugDir, debugDir, { recursive: true });
+                logger?.info?.('Copied audio debug directory to sales-wizard');
+            } catch (copyError) {
+                logger?.error?.('Failed to migrate audio debug directory to sales-wizard', copyError);
+            }
+        }
+    }
 
     if (!fs.existsSync(debugDir)) {
         fs.mkdirSync(debugDir, { recursive: true });

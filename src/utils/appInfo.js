@@ -1,3 +1,3 @@
 export function getAppName() {
-    return window.randomDisplayName || 'Cheating Daddy';
+    return window.randomDisplayName || 'Sales Wizard';
 }

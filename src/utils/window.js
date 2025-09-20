@@ -15,12 +15,29 @@ const RESIZE_ANIMATION_DURATION = 500; // milliseconds
 
 function ensureDataDirectories() {
     const homeDir = os.homedir();
-    const cheddarDir = path.join(homeDir, 'cheddar');
-    const dataDir = path.join(cheddarDir, 'data');
+    const salesWizardDir = path.join(homeDir, 'sales-wizard');
+    const dataDir = path.join(salesWizardDir, 'data');
     const imageDir = path.join(dataDir, 'image');
     const audioDir = path.join(dataDir, 'audio');
+    const legacyDataDir = path.join(homeDir, 'cheddar');
 
-    [cheddarDir, dataDir, imageDir, audioDir].forEach(dir => {
+    if (!fs.existsSync(salesWizardDir) && fs.existsSync(legacyDataDir)) {
+        try {
+            fs.renameSync(legacyDataDir, salesWizardDir);
+            logger?.info?.('Migrated legacy data directory to sales-wizard');
+        } catch (renameError) {
+            logger?.warn?.('Failed to rename legacy data directory, attempting copy', renameError);
+            try {
+                fs.cpSync(legacyDataDir, salesWizardDir, { recursive: true });
+                fs.rmSync(legacyDataDir, { recursive: true, force: true });
+                logger?.info?.('Copied legacy data directory to sales-wizard');
+            } catch (copyError) {
+                logger?.error?.('Failed to migrate legacy data directory to sales-wizard', copyError);
+            }
+        }
+    }
+
+    [salesWizardDir, dataDir, imageDir, audioDir].forEach(dir => {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
@@ -160,7 +177,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
 
                     // Apply content protection setting via IPC handler
                     try {
-                        const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
+                        const contentProtection = await mainWindow.webContents.executeJavaScript('salesWizard.getContentProtection()');
                         mainWindow.setContentProtection(contentProtection);
                         logger.info('Content protection loaded from settings:', contentProtection);
                     } catch (error) {
@@ -291,7 +308,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
             globalShortcut.register(keybinds.panicHide, () => {
                 try {
                     if (mainWindow.isVisible()) mainWindow.hide();
-                    mainWindow.webContents.executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()').catch(() => {});
+                    mainWindow.webContents.executeJavaScript('salesWizard && salesWizard.stopCapture && salesWizard.stopCapture()').catch(() => {});
                 } catch (err) {
                     logger.error('Error during panicHide:', err);
                 }
@@ -306,7 +323,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.toggleMic) {
         try {
             globalShortcut.register(keybinds.toggleMic, () => {
-                mainWindow.webContents.executeJavaScript('window.dispatchEvent(new CustomEvent("cheddar-toggle-mic"))');
+                mainWindow.webContents.executeJavaScript('window.dispatchEvent(new CustomEvent("salesWizard-toggle-mic"))');
             });
             logger.info(`Registered toggleMic: ${keybinds.toggleMic}`);
         } catch (error) {
@@ -326,7 +343,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 
                     // Use the new handleShortcut function
                     mainWindow.webContents.executeJavaScript(`
-                        cheddar.handleShortcut('${shortcutKey}');
+                        salesWizard.handleShortcut('${shortcutKey}');
                     `);
                 } catch (error) {
                     logger.error('Error handling next step shortcut:', error);
@@ -518,8 +535,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
             // Get current view and layout mode from renderer
             let viewName, layoutMode;
             try {
-                viewName = await event.sender.executeJavaScript('cheddar.getCurrentView()');
-                layoutMode = await event.sender.executeJavaScript('cheddar.getLayoutMode()');
+                viewName = await event.sender.executeJavaScript('salesWizard.getCurrentView()');
+                layoutMode = await event.sender.executeJavaScript('salesWizard.getLayoutMode()');
             } catch (error) {
                 logger.warn('Failed to get view/layout from renderer, using defaults:', error);
                 viewName = 'main';
