@@ -2,9 +2,8 @@ const { BrowserWindow, globalShortcut, ipcMain, screen, app } = require('electro
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('os');
-const { applyStealthMeasures, startTitleRandomization } = require('./stealthFeatures');
 
-const STEALTH = process.env.STEALTH === '1';
+const APP_WINDOW_TITLE = 'Sales Wizard';
 
 let mouseEventsIgnored = false;
 let windowResizing = false;
@@ -27,23 +26,29 @@ function ensureDataDirectories() {
     return { imageDir, audioDir };
 }
 
-function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
+function createWindow(sendToRenderer, geminiSessionRef) {
     // Get layout preference (default to 'normal')
     let windowWidth = 840;
     let windowHeight = 460;
+
+    const isMac = process.platform === 'darwin';
+    const isWindows = process.platform === 'win32';
+
+    const backgroundColor = isMac || isWindows ? '#00000000' : '#202020';
 
     const mainWindow = new BrowserWindow({
         width: windowWidth,
         height: windowHeight,
         show: false,
         frame: false,
-        transparent: true,
-        hasShadow: false,
+        transparent: isMac || isWindows,
+        hasShadow: true,
         resizable: true,
         movable: true,
         focusable: true,
         alwaysOnTop: true,
-        backgroundColor: '#00000000',
+        title: APP_WINDOW_TITLE,
+        backgroundColor,
         skipTaskbar: false,
         webPreferences: {
             preload: path.join(__dirname, '../preload.js'),
@@ -77,6 +82,17 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     mainWindow.setContentProtection(true);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+    try {
+        if (isMac) {
+            mainWindow.setVibrancy('sidebar');
+            mainWindow.setVisualEffectState('active');
+        } else if (isWindows && typeof mainWindow.setBackgroundMaterial === 'function') {
+            mainWindow.setBackgroundMaterial('mica');
+        }
+    } catch (error) {
+        logger.warn('Unable to enable platform vibrancy:', error);
+    }
+
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
         mainWindow.focus();
@@ -91,16 +107,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
 
     mainWindow.loadFile(path.join(__dirname, '../index.html'));
 
-    // Set window title to random name if provided
-    if (randomNames && randomNames.windowTitle) {
-        mainWindow.setTitle(randomNames.windowTitle);
-        logger.info(`Set window title to: ${randomNames.windowTitle}`);
-    }
-
-    if (STEALTH) {
-        applyStealthMeasures(mainWindow);
-        startTitleRandomization(mainWindow);
-    }
+    mainWindow.setTitle(APP_WINDOW_TITLE);
 
     // After window is created, check for layout preference and resize if needed
     mainWindow.webContents.once('dom-ready', () => {
@@ -162,7 +169,6 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-        panicHide: isMac ? 'Cmd+Esc' : 'Ctrl+Esc',
         toggleMic: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
@@ -251,23 +257,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
             logger.info(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
         } catch (error) {
             logger.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
-        }
-    }
-
-    // Panic hide shortcut
-    if (keybinds.panicHide) {
-        try {
-            globalShortcut.register(keybinds.panicHide, () => {
-                try {
-                    if (mainWindow.isVisible()) mainWindow.hide();
-                    mainWindow.webContents.executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()').catch(() => {});
-                } catch (err) {
-                    logger.error('Error during panicHide:', err);
-                }
-            });
-            logger.info(`Registered panicHide: ${keybinds.panicHide}`);
-        } catch (error) {
-            logger.error(`Failed to register panicHide (${keybinds.panicHide}):`, error);
         }
     }
 

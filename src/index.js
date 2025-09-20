@@ -9,8 +9,6 @@ const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const { registerSecureStoreIpc } = require('./utils/secureStore');
-const { initializeRandomProcessNames } = require('./utils/processRandomizer');
-const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -20,18 +18,14 @@ let contextParams = {
     disallowedTopics: '',
 };
 
-// Initialize random process names for stealth
-const randomNames = initializeRandomProcessNames();
+const APP_DISPLAY_NAME = 'Sales Wizard';
 
 function createMainWindow() {
-    mainWindow = createWindow(sendToRenderer, geminiSessionRef, randomNames);
+    mainWindow = createWindow(sendToRenderer, geminiSessionRef);
     return mainWindow;
 }
 
 app.whenReady().then(async () => {
-    // Apply anti-analysis measures with random delay
-    await applyAntiAnalysisMeasures();
-
     createMainWindow();
     setupGeminiIpcHandlers(geminiSessionRef);
     setupGeneralIpcHandlers();
@@ -98,12 +92,24 @@ function setupGeneralIpcHandlers() {
         }
     });
 
+    const resolveAppDisplayName = () => APP_DISPLAY_NAME;
+
+    ipcMain.handle('get-app-display-name', async () => {
+        try {
+            return resolveAppDisplayName();
+        } catch (error) {
+            logger.error('Error getting application display name:', error);
+            return APP_DISPLAY_NAME;
+        }
+    });
+
+    // Backwards compatibility for older preload scripts still invoking the legacy channel
     ipcMain.handle('get-random-display-name', async () => {
         try {
-            return randomNames ? randomNames.displayName : 'System Monitor';
+            return resolveAppDisplayName();
         } catch (error) {
-            logger.error('Error getting random display name:', error);
-            return 'System Monitor';
+            logger.error('Error getting application display name:', error);
+            return APP_DISPLAY_NAME;
         }
     });
 

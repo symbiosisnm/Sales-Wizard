@@ -1,18 +1,22 @@
 // renderer.js
 const ipcRenderer = (window.electron?.ipcRenderer) ?? require('electron').ipcRenderer;
 
-// Initialize random display name for UI components
-window.randomDisplayName = null;
+// Initialize application display name for UI components
+window.appDisplayName = 'Sales Wizard';
 
-// Request random display name from main process
-window.electron?.getRandomDisplayName?.()
+const fetchAppDisplayName =
+    window.electron?.getAppDisplayName ?? window.electron?.getRandomDisplayName;
+
+fetchAppDisplayName?.()
     .then(name => {
-        window.randomDisplayName = name;
-        logger.info('Set random display name:', name);
+        if (typeof name === 'string' && name.trim().length > 0) {
+            window.appDisplayName = name;
+        }
+        logger.info('Using application display name:', window.appDisplayName);
     })
     .catch(err => {
-        logger.warn('Could not get random display name:', err);
-        window.randomDisplayName = 'System Monitor';
+        logger.warn('Could not resolve application display name:', err);
+        window.appDisplayName = 'Sales Wizard';
     });
 
 let mediaStream = null;

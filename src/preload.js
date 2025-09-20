@@ -23,7 +23,8 @@ const api = {
     ipcRenderer.invoke('update-google-search-setting', enabled),
   updateContentProtection: enabled =>
     ipcRenderer.invoke('update-content-protection', enabled),
-  getRandomDisplayName: () => ipcRenderer.invoke('get-random-display-name'),
+  getAppDisplayName: () => ipcRenderer.invoke('get-app-display-name'),
+  getRandomDisplayName: () => ipcRenderer.invoke('get-app-display-name'),
   exportSession: options => ipcRenderer.invoke('export-session', options),
   onUpdateResponse: handler => ipcRenderer.on('update-response', handler),
   removeUpdateResponseListener: handler =>
