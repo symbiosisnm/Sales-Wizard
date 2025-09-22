@@ -3,6 +3,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('os');
 
+const logger = require('./logger');
+
 const APP_WINDOW_TITLE = 'Sales Wizard';
 
 let mouseEventsIgnored = false;
@@ -26,7 +28,7 @@ function ensureDataDirectories() {
     return { imageDir, audioDir };
 }
 
-function createWindow(sendToRenderer, geminiSessionRef) {
+function createWindow(sendToRenderer, _geminiSessionRef) {
     // Get layout preference (default to 'normal')
     let windowWidth = 840;
     let windowHeight = 460;
@@ -36,7 +38,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
 
     const backgroundColor = isMac || isWindows ? '#00000000' : '#202020';
 
-    const mainWindow = new BrowserWindow({
+    const windowOptions = {
         width: windowWidth,
         height: windowHeight,
         show: false,
@@ -59,7 +61,9 @@ function createWindow(sendToRenderer, geminiSessionRef) {
             webSecurity: true,
             allowRunningInsecureContent: false,
         },
-    });
+    };
+
+    const mainWindow = new BrowserWindow(windowOptions);
 
     const { session, desktopCapturer } = require('electron');
     session.defaultSession.setDisplayMediaRequestHandler(
@@ -144,17 +148,17 @@ function createWindow(sendToRenderer, geminiSessionRef) {
                         mainWindow.setContentProtection(true);
                     }
 
-                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer);
                 })
                 .catch(() => {
                     // Default to content protection enabled
                     mainWindow.setContentProtection(true);
-                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer);
                 });
         }, 150);
     });
 
-    setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef);
+    setupWindowIpcHandlers(mainWindow, sendToRenderer);
 
     return mainWindow;
 }
@@ -349,7 +353,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     }
 }
 
-function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
+function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
     ipcMain.on('view-changed', (event, view) => {
         if (view !== 'assistant' && !mainWindow.isDestroyed()) {
             mainWindow.setIgnoreMouseEvents(false);

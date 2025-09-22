@@ -1,5 +1,6 @@
 // renderer.js
 const ipcRenderer = (window.electron?.ipcRenderer) ?? require('electron').ipcRenderer;
+const logger = window.logger ?? console;
 
 // Initialize application display name for UI components
 window.appDisplayName = 'Sales Wizard';

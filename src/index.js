@@ -2,10 +2,9 @@ require('dotenv').config();
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
-require('dotenv').config();
-require("./utils/logger");
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
+const logger = require('./utils/logger');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const { registerSecureStoreIpc } = require('./utils/secureStore');
@@ -19,6 +18,11 @@ let contextParams = {
 };
 
 const APP_DISPLAY_NAME = 'Sales Wizard';
+
+app.name = APP_DISPLAY_NAME;
+if (typeof app.setName === 'function') {
+    app.setName(APP_DISPLAY_NAME);
+}
 
 function createMainWindow() {
     mainWindow = createWindow(sendToRenderer, geminiSessionRef);
@@ -73,7 +77,7 @@ function setupGeneralIpcHandlers() {
 
     ipcMain.on('update-keybinds', (_event, newKeybinds) => {
         if (mainWindow) {
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer);
         }
     });
 
