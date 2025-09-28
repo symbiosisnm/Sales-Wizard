@@ -344,7 +344,7 @@ export class AdvancedView extends LitElement {
         this.throttleAtPercent = 75;
 
         // Content protection default
-        this.contentProtection = true;
+        this.contentProtection = false;
 
         // History limit default
         this.historyLimit = 50;

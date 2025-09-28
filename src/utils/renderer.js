@@ -1007,7 +1007,7 @@ const cheddar = {
     // Content protection function
     getContentProtection: () => {
         const contentProtection = localStorage.getItem('contentProtection');
-        return contentProtection !== null ? contentProtection === 'true' : true;
+        return contentProtection !== null ? contentProtection === 'true' : false;
     },
 
     // Platform detection

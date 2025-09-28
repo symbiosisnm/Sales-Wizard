@@ -116,29 +116,236 @@ const server = app.listen(process.env.PORT || 3001);
 
 // WebSocket endpoint for Gemini Live
 const wss = new WebSocketServer({ server, path: '/live' });
-wss.on('connection', async (ws) => {
-  const session = await genai.live.connect({
-    model: 'gemini-live-2.5-flash-preview',
-    config: { response_modalities: [Modality.TEXT], system_instruction: buildSystemInstruction() }
+wss.on('connection', ws => {
+  let session = null;
+  let sessionReady = false;
+  let pendingActions = [];
+  let currentInstruction = buildSystemInstruction();
+
+  const sendJson = payload => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  };
+
+  const sendStatus = message => sendJson({ type: 'status', msg: message });
+  const sendError = (error, context = 'gemini-live') => {
+    logger.error(`[${context}]`, error);
+    sendJson({ type: 'error', msg: error?.message || String(error) });
+  };
+
+  const flushQueue = () => {
+    if (!sessionReady) return;
+    const tasks = pendingActions;
+    pendingActions = [];
+    for (const task of tasks) {
+      try {
+        task();
+      } catch (err) {
+        sendError(err, 'flushQueue');
+      }
+    }
+  };
+
+  const queueOrRun = action => {
+    if (sessionReady) {
+      try {
+        action();
+      } catch (err) {
+        sendError(err, 'queueOrRun');
+      }
+    } else {
+      pendingActions.push(action);
+    }
+  };
+
+  const resolveModalities = list => {
+    if (!Array.isArray(list) || !list.length) return [Modality.TEXT];
+    return list
+      .map(mod => String(mod || '').toUpperCase())
+      .map(mod => {
+        if (mod === 'AUDIO') return Modality.AUDIO;
+        if (mod === 'VIDEO' || mod === 'IMAGE') return Modality.VIDEO;
+        return Modality.TEXT;
+      });
+  };
+
+  const ensureSession = async ({ instructionOverride, responseModalities } = {}) => {
+    if (session) return;
+
+    if (instructionOverride && typeof instructionOverride === 'string') {
+      const trimmed = instructionOverride.trim();
+      if (trimmed) {
+        currentInstruction = currentInstruction
+          ? `${currentInstruction}\n${trimmed}`
+          : trimmed;
+      }
+    }
+
+    const config = {
+      responseModalities: resolveModalities(responseModalities),
+    };
+
+    if (currentInstruction) {
+      config.systemInstruction = {
+        role: 'system',
+        parts: [{ text: currentInstruction }],
+      };
+    }
+
+    try {
+      session = await genai.live.connect({
+        model: process.env.GEMINI_LIVE_MODEL || 'gemini-live-2.5-flash-preview',
+        config,
+        callbacks: {
+          onopen: () => {
+            sessionReady = true;
+            sendStatus('Gemini live session ready');
+            flushQueue();
+          },
+          onmessage: message => {
+            try {
+              if (message.setupComplete) {
+                sendStatus('Gemini session setup complete');
+              }
+
+              if (message.text) {
+                sendJson({ type: 'model_text', text: message.text });
+              }
+
+              const parts = message?.serverContent?.modelTurn?.parts || [];
+              for (const part of parts) {
+                const inline = part.inlineData;
+                if (inline?.mimeType?.startsWith('audio/') && inline.data) {
+                  sendJson({ type: 'model_audio', data: inline.data, mime: inline.mimeType });
+                }
+              }
+
+              if (message.usageMetadata) {
+                sendJson({ type: 'usage', metadata: message.usageMetadata });
+              }
+            } catch (err) {
+              sendError(err, 'onmessage');
+            }
+          },
+          onerror: event => {
+            const err = event?.error || new Error(event?.message || 'Gemini live error');
+            sendError(err, 'onerror');
+          },
+          onclose: () => {
+            sessionReady = false;
+            sendStatus('Gemini live session closed');
+          },
+        },
+      });
+    } catch (err) {
+      sendError(err, 'ensureSession');
+      throw err;
+    }
+  };
+
+  const handleText = text => {
+    if (!text) return;
+    queueOrRun(() => {
+      session.sendClientContent({
+        turns: [
+          {
+            role: 'user',
+            parts: [{ text }],
+          },
+        ],
+        turnComplete: true,
+      });
+    });
+  };
+
+  const handleAudio = payload => {
+    if (!payload?.data) return;
+    const mimeType = payload.mime || payload.mimeType || 'audio/pcm;rate=16000';
+    queueOrRun(() => {
+      session.sendRealtimeInput({
+        audio: {
+          data: payload.data,
+          mimeType,
+        },
+      });
+    });
+  };
+
+  const handleImage = payload => {
+    if (!payload?.data) return;
+    const mimeType = payload.mime || payload.mimeType || 'image/jpeg';
+    queueOrRun(() => {
+      session.sendRealtimeInput({
+        video: {
+          data: payload.data,
+          mimeType,
+        },
+      });
+    });
+  };
+
+  ws.on('message', async raw => {
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (err) {
+      sendError(err, 'parse');
+      return;
+    }
+
+    const { type } = data || {};
+
+    try {
+      switch (type) {
+        case 'start':
+          await ensureSession({
+            instructionOverride: data.systemInstruction,
+            responseModalities: data.responseModalities,
+          });
+          sendStatus('Start command acknowledged');
+          break;
+        case 'text':
+          await ensureSession();
+          handleText(data.text);
+          break;
+        case 'audio':
+          await ensureSession();
+          handleAudio(data);
+          break;
+        case 'image':
+          await ensureSession();
+          handleImage(data);
+          break;
+        case 'end':
+          if (session) {
+            session.close();
+            session = null;
+            sessionReady = false;
+          }
+          break;
+        default:
+          logger.warn('Unhandled live message type:', type);
+      }
+    } catch (err) {
+      sendError(err, 'message-handler');
+    }
   });
 
-  // Forward Gemini replies back to the client
-  (async () => {
-    for await (const response of session.receive()) {
-      ws.send(JSON.stringify({ text: response.text || '' }));
-    }
-  })();
-
-  ws.on('message', async (msg) => {
-    const data = JSON.parse(msg);
-    if (data.audio) {
-      const buf = Buffer.from(data.audio, 'base64');
-      await session.send_realtime_input({ audio: { data: buf, mime_type: data.mimeType || 'audio/pcm;rate=16000' } });
-    } else if (data.image) {
-      const buf = Buffer.from(data.image, 'base64');
-      await session.send_realtime_input({ image: { data: buf, mime_type: data.mimeType || 'image/jpeg' } });
+  ws.on('close', () => {
+    pendingActions = [];
+    if (session) {
+      try {
+        session.close();
+      } catch (err) {
+        sendError(err, 'close');
+      }
+      session = null;
+      sessionReady = false;
     }
   });
 
-  ws.on('close', () => session.close());
+  ws.on('error', err => {
+    sendError(err, 'ws');
+  });
 });

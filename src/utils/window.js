@@ -62,7 +62,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
     );
 
     mainWindow.setResizable(false);
-    mainWindow.setContentProtection(true);
+    mainWindow.setContentProtection(false);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     // Center window at the top of the screen
@@ -122,14 +122,14 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                         logger.info('Content protection loaded from settings:', contentProtection);
                     } catch (error) {
                         logger.error('Error loading content protection:', error);
-                        mainWindow.setContentProtection(true);
+                        mainWindow.setContentProtection(false);
                     }
 
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 })
                 .catch(() => {
                     // Default to content protection enabled
-                    mainWindow.setContentProtection(true);
+                    mainWindow.setContentProtection(false);
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 });
         }, 150);

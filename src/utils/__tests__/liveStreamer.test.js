@@ -12,8 +12,14 @@ global.WebSocket = class {
 };
 global.WebSocket.OPEN = 1;
 
-// Use real startLiveStreaming with stubbed WebSocket
-const { startLiveStreaming } = require('../liveStreamer');
+// Lazily import the ESM live streamer so Node's CommonJS tests can use it.
+let liveStreamerModule = null;
+async function getLiveStreamer() {
+  if (!liveStreamerModule) {
+    liveStreamerModule = await import('../liveStreamer.mjs');
+  }
+  return liveStreamerModule;
+}
 
 // Helper to restore globals after each test
 function restoreTimers(orig) {
@@ -22,6 +28,7 @@ function restoreTimers(orig) {
 }
 
 test('screen track end stops interval and notifies status', async () => {
+  const { startLiveStreaming } = await getLiveStreamer();
   global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn() };
 
   const track = { stop: mock.fn(), onended: null };
@@ -71,6 +78,7 @@ test('screen track end stops interval and notifies status', async () => {
 });
 
 test('getDisplayMedia denial triggers onError', async () => {
+  const { startLiveStreaming } = await getLiveStreamer();
   global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn() };
   const err = new Error('Permission denied');
   err.name = 'NotAllowedError';

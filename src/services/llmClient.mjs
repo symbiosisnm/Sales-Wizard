@@ -1,7 +1,15 @@
 // Unified LLM client for live interactions over WebSocket.
 // Mirrors the desktop implementation but with browser-friendly defaults.
 
-const DEFAULT_WS = 'ws://localhost:8787/ws/live';
+function resolveDefaultWs() {
+  if (typeof window !== 'undefined') {
+    const host = window.location?.hostname || 'localhost';
+    return `ws://${host}:3001/live`;
+  }
+  return 'ws://localhost:3001/live';
+}
+
+const DEFAULT_WS = resolveDefaultWs();
 
 export class LLMClient {
     /** @type {WebSocket|null} */
@@ -19,7 +27,7 @@ export class LLMClient {
         this.url = url;
     }
 
-    connect({ model = 'gemini-2.0-flash-live-001', responseModalities = ['TEXT'], systemInstruction } = {}) {
+    connect({ model = 'gemini-live-2.5-flash-preview', responseModalities = ['TEXT'], systemInstruction } = {}) {
         return new Promise((resolve, reject) => {
             try {
                 this.ws = new WebSocket(this.url);

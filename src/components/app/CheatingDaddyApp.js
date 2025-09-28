@@ -13,7 +13,7 @@ import '../views/SidePanel.js';
 // It exports a startListening() function that returns a stop function.
 import { startListening } from '../../utils/voiceAssistant.js';
 // Live streaming helper integrates with Gemini Live via backend
-import { startLiveStreaming } from '../../utils/liveStreamer.js';
+import { startLiveStreaming } from '../../utils/liveStreamer.mjs';
 import defaultLogger from '../../utils/logger.js';
 
 // Use global logger if available, falling back to the imported logger or console
