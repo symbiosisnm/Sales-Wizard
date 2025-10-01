@@ -138,6 +138,28 @@ export async function startLiveStreaming({
 
   // Screen capture
   let screenStream; let frameInterval;
+  const disposableNodes = new Set();
+
+  const registerDisposableNode = node => {
+    if (node) disposableNodes.add(node);
+    return node;
+  };
+
+  const cleanupDomNodes = () => {
+    disposableNodes.forEach(node => {
+      try {
+        if (typeof node.pause === 'function') node.pause();
+      } catch { /* empty */ }
+      try {
+        if ('srcObject' in node) node.srcObject = null;
+      } catch { /* empty */ }
+      try {
+        if (typeof node.remove === 'function') node.remove();
+        else if (node?.parentNode) node.parentNode.removeChild(node);
+      } catch { /* empty */ }
+    });
+    disposableNodes.clear();
+  };
 
   const stopScreenCapture = () => {
     if (frameInterval) {
@@ -148,6 +170,7 @@ export async function startLiveStreaming({
       screenStream.getTracks().forEach(t => t.stop());
       screenStream = null;
     }
+    cleanupDomNodes();
     onStatus('Screen capture ended');
   };
 
@@ -155,18 +178,178 @@ export async function startLiveStreaming({
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const track = screenStream.getVideoTracks()[0];
     track.onended = stopScreenCapture;
-    const imageCapture = new ImageCapture(track);
-    frameInterval = setInterval(async () => {
+    const imageCapture = typeof ImageCapture === 'function' ? new ImageCapture(track) : null;
+
+    const encodeBlobAndSend = async blob => {
+      const arrayBuffer = await blob.arrayBuffer();
+      const binary = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer));
+      const base64 = btoa(binary);
+      client.sendJpegBase64(base64, blob.type || 'image/jpeg');
+    };
+
+    let bitmapCanvasElement = null;
+
+    const bitmapToBlob = async bitmap => {
+      if (!bitmap) throw new Error('No bitmap captured');
+      const mime = 'image/jpeg';
+      if (typeof OffscreenCanvas !== 'undefined') {
+        const canvas = new OffscreenCanvas(bitmap.width || 1, bitmap.height || 1);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Unable to obtain OffscreenCanvas context');
+        ctx.drawImage(bitmap, 0, 0);
+        if (typeof canvas.convertToBlob === 'function') {
+          return canvas.convertToBlob({ type: mime, quality: 0.9 }).then(blob => {
+            bitmap.close?.();
+            return blob;
+          });
+        }
+        const blob = await new Promise((resolve, reject) => {
+          try {
+            const dataUrl = canvas.toDataURL?.(mime, 0.9);
+            if (!dataUrl) {
+              reject(new Error('OffscreenCanvas toDataURL failed'));
+              return;
+            }
+            const base64 = dataUrl.split(',')[1];
+            const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+            resolve(new Blob([bytes], { type: mime }));
+          } catch (err) {
+            reject(err);
+          }
+        });
+        bitmap.close?.();
+        return blob;
+      }
+
+      if (typeof document !== 'undefined') {
+        if (!bitmapCanvasElement) {
+          bitmapCanvasElement = registerDisposableNode(document.createElement('canvas'));
+          bitmapCanvasElement.style.position = 'fixed';
+          bitmapCanvasElement.style.opacity = '0';
+          bitmapCanvasElement.style.pointerEvents = 'none';
+          if (document.body) document.body.appendChild(bitmapCanvasElement);
+        }
+        const canvas = bitmapCanvasElement;
+        canvas.width = bitmap.width || canvas.width || 1;
+        canvas.height = bitmap.height || canvas.height || 1;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Unable to obtain canvas context');
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob(b => {
+            if (b) resolve(b);
+            else reject(new Error('Canvas toBlob returned null'));
+          }, mime, 0.9);
+        });
+        bitmap.close?.();
+        return blob;
+      }
+
+      throw new Error('No canvas implementation available for bitmap conversion');
+    };
+
+    let useGrabFrame = false;
+    let useCanvasFallback = false;
+    let videoElement = null;
+    let canvasElement = null;
+    let isCapturing = false;
+
+    const ensureVideoCanvas = () => {
+      if (typeof document === 'undefined') {
+        throw new Error('Canvas fallback requires document');
+      }
+      if (!videoElement) {
+        videoElement = registerDisposableNode(document.createElement('video'));
+        videoElement.muted = true;
+        videoElement.autoplay = true;
+        videoElement.playsInline = true;
+        videoElement.style.position = 'fixed';
+        videoElement.style.opacity = '0';
+        videoElement.style.pointerEvents = 'none';
+        if (document.body) document.body.appendChild(videoElement);
+        try {
+          videoElement.srcObject = screenStream;
+        } catch (err) {
+          logger.warn('Unable to bind stream to video element:', err);
+        }
+        const settings = track.getSettings?.() || {};
+        if (settings.width) videoElement.width = settings.width;
+        if (settings.height) videoElement.height = settings.height;
+        if (typeof videoElement.play === 'function') {
+          videoElement.play().catch(() => {});
+        }
+      }
+      if (!canvasElement) {
+        canvasElement = registerDisposableNode(document.createElement('canvas'));
+        canvasElement.style.position = 'fixed';
+        canvasElement.style.opacity = '0';
+        canvasElement.style.pointerEvents = 'none';
+        if (document.body) document.body.appendChild(canvasElement);
+      }
+      return { videoElement, canvasElement };
+    };
+
+    const captureWithCanvas = async () => {
+      const { videoElement: vid, canvasElement: canv } = ensureVideoCanvas();
+      const width = vid.videoWidth || vid.width || track.getSettings?.().width || 1;
+      const height = vid.videoHeight || vid.height || track.getSettings?.().height || 1;
+      if ((vid.readyState ?? 0) < 2 && (!width || !height)) {
+        return null;
+      }
+      canv.width = width;
+      canv.height = height;
+      const ctx = canv.getContext('2d');
+      if (!ctx) throw new Error('Unable to obtain canvas context');
+      ctx.drawImage(vid, 0, 0, width, height);
+      const mime = 'image/jpeg';
+      const blob = await new Promise((resolve, reject) => {
+        canv.toBlob(b => {
+          if (b) resolve(b);
+          else reject(new Error('Canvas toBlob returned null'));
+        }, mime, 0.9);
+      });
+      return blob;
+    };
+
+    const captureFrame = async () => {
+      if (isCapturing) return;
+      isCapturing = true;
       try {
-        const blob = await imageCapture.takePhoto();
-        const arrayBuffer = await blob.arrayBuffer();
-        const binary = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer));
-        const base64 = btoa(binary);
-        client.sendJpegBase64(base64, blob.type || 'image/jpeg');
+        if (!useGrabFrame && !useCanvasFallback && imageCapture?.takePhoto) {
+          try {
+            const blob = await imageCapture.takePhoto();
+            await encodeBlobAndSend(blob);
+            return;
+          } catch (err) {
+            logger.warn('ImageCapture.takePhoto failed, attempting grabFrame fallback:', err);
+            useGrabFrame = true;
+          }
+        }
+
+        if ((useGrabFrame || !imageCapture?.takePhoto) && imageCapture?.grabFrame && !useCanvasFallback) {
+          try {
+            const bitmap = await imageCapture.grabFrame();
+            const blob = await bitmapToBlob(bitmap);
+            await encodeBlobAndSend(blob);
+            return;
+          } catch (err) {
+            logger.warn('ImageCapture.grabFrame failed, attempting canvas fallback:', err);
+            useCanvasFallback = true;
+          }
+        }
+
+        const blob = await captureWithCanvas();
+        if (blob) {
+          await encodeBlobAndSend(blob);
+        }
       } catch (err) {
         logger.warn('Error capturing screen frame:', err);
+      } finally {
+        isCapturing = false;
       }
-    }, 1000);
+    };
+
+    frameInterval = setInterval(captureFrame, 1000);
   } catch (err) {
     const msg = err?.name === 'NotAllowedError'
       ? 'Screen capture request was blocked or denied. Your browser may require a reload before prompting again.'
