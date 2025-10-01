@@ -1,7 +1,8 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
+import { resolveBackendOrigin } from '../../services/backendConfig.js';
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = resolveBackendOrigin();
 
 export class AdvancedView extends LitElement {
     static styles = css`
