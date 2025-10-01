@@ -1,7 +1,9 @@
 // Unified LLM client for live interactions over WebSocket.
 // Mirrors the desktop implementation but with browser-friendly defaults.
 
-const DEFAULT_WS = 'ws://localhost:8787/ws/live';
+import { resolveLiveWsUrl } from './backendConfig.js';
+
+const DEFAULT_WS = resolveLiveWsUrl();
 
 export class LLMClient {
     /** @type {WebSocket|null} */

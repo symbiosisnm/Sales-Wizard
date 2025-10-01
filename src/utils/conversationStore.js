@@ -1,8 +1,9 @@
 const { sendToRenderer } = require('./ipcUtils');
 const fs = require('fs');
 const path = require('path');
+const { resolveBackendOrigin } = require('../services/backendConfig.js');
 
-const API_BASE = process.env.BACKEND_URL || 'http://localhost:3001';
+const API_BASE = resolveBackendOrigin();
 const PENDING_FILE = path.join(__dirname, '../../pendingTurns.json');
 
 let pendingTurns = [];

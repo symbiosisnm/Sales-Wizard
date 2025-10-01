@@ -4,7 +4,9 @@
  * is ready and forwards server responses to consumer callbacks.
  */
 
-const DEFAULT_URL = 'ws://localhost:3001/live';
+import { resolveLiveWsUrl } from './backendConfig.js';
+
+const DEFAULT_URL = resolveLiveWsUrl();
 
 export class LiveSession {
     /**
