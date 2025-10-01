@@ -2,8 +2,11 @@ require('dotenv').config();
 require("../src/utils/logger");
 const express = require('express');
 const { GoogleGenAI, Modality } = require('@google/genai');
+const { Blob } = require('buffer');
 const { WebSocketServer } = require('ws');
 const historyStore = require('./historyStore');
+
+const logger = global.logger || console;
 
 const app = express();
 app.use(express.json());
@@ -116,29 +119,247 @@ const server = app.listen(process.env.PORT || 3001);
 
 // WebSocket endpoint for Gemini Live
 const wss = new WebSocketServer({ server, path: '/live' });
-wss.on('connection', async (ws) => {
-  const session = await genai.live.connect({
-    model: 'gemini-live-2.5-flash-preview',
-    config: { response_modalities: [Modality.TEXT], system_instruction: buildSystemInstruction() }
+wss.on('connection', (ws) => {
+  let liveSession = null;
+  let starting = false;
+  let closed = false;
+
+  const defaultModel = 'gemini-live-2.5-flash-preview';
+
+  function safeSend(payload) {
+    try {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify(payload));
+      }
+    } catch (err) {
+      logger?.error?.('WS send error', err);
+    }
+  }
+
+  function sendStatus(msg) {
+    safeSend({ type: 'status', msg });
+  }
+
+  function sendError(msg) {
+    safeSend({ type: 'error', msg });
+  }
+
+  function extractTextAndMedia(message) {
+    try {
+      const textParts = [];
+      const audioParts = [];
+
+      if (typeof message?.text === 'string' && message.text.trim()) {
+        textParts.push(message.text.trim());
+      }
+
+      const candidateParts = [];
+
+      const serverParts = message?.serverContent?.modelTurn?.parts;
+      if (Array.isArray(serverParts)) {
+        candidateParts.push(...serverParts);
+      }
+
+      const outputParts = message?.output?.[0]?.content?.parts;
+      if (Array.isArray(outputParts)) {
+        candidateParts.push(...outputParts);
+      }
+
+      const directParts = message?.parts;
+      if (Array.isArray(directParts)) {
+        candidateParts.push(...directParts);
+      }
+
+      for (const part of candidateParts) {
+        if (typeof part?.text === 'string' && part.text) {
+          textParts.push(part.text);
+        }
+
+        const inlineData = part?.inlineData || part?.data;
+        const mime = inlineData?.mimeType || inlineData?.mime_type || '';
+        if (inlineData?.data && typeof inlineData.data !== 'undefined' && typeof mime === 'string' && mime.startsWith('audio/')) {
+          try {
+            const base64 = Buffer.from(inlineData.data).toString('base64');
+            audioParts.push({ data: base64, mime });
+          } catch (e) {
+            logger?.warn?.('Failed to encode audio part', e);
+          }
+        }
+      }
+
+      if (textParts.length) {
+        safeSend({ type: 'model_text', text: textParts.join('') });
+      }
+
+      for (const audio of audioParts) {
+        safeSend({ type: 'model_audio', data: audio.data, mime: audio.mime });
+      }
+    } catch (err) {
+      logger?.warn?.('Failed to forward live response', err);
+    }
+  }
+
+  async function startSession(payload) {
+    if (starting || liveSession) {
+      return sendError('Session already started');
+    }
+    starting = true;
+
+    const model = typeof payload?.model === 'string' && payload.model.trim()
+      ? payload.model.trim()
+      : defaultModel;
+
+    const responseModalitiesInput = Array.isArray(payload?.responseModalities) && payload.responseModalities.length
+      ? payload.responseModalities
+      : ['TEXT'];
+
+    const responseModalities = responseModalitiesInput
+      .map((m) => {
+        const key = typeof m === 'string' ? m.toUpperCase() : 'TEXT';
+        return Modality[key] || Modality.TEXT;
+      })
+      .filter(Boolean);
+
+    const userInstruction = typeof payload?.systemInstruction === 'string' ? payload.systemInstruction.trim() : '';
+    const baseInstruction = buildSystemInstruction();
+    const combinedInstruction = [baseInstruction, userInstruction].filter(Boolean).join(' ');
+
+    try {
+      sendStatus('Connecting to Gemini live session');
+      liveSession = await genai.live.connect({
+        model,
+        config: {
+          responseModalities: responseModalities.length ? responseModalities : [Modality.TEXT],
+          systemInstruction: combinedInstruction ? { parts: [{ text: combinedInstruction }] } : undefined,
+        },
+        callbacks: {
+          onopen: () => sendStatus('Gemini live opened'),
+          onclose: (evt) => sendStatus(`Gemini live closed${evt?.reason ? `: ${evt.reason}` : ''}`),
+          onerror: (err) => sendError(`Gemini live error: ${err?.message || err}`),
+          onmessage: (msg) => extractTextAndMedia(msg),
+        },
+      });
+      sendStatus(`Live session ready on model ${model}`);
+    } catch (err) {
+      logger?.error?.('Failed to start live session', err);
+      sendError(`Failed to start live session: ${err?.message || err}`);
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function handleTextMessage(payload) {
+    if (!liveSession) {
+      return sendError('Not started');
+    }
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (!text) {
+      return sendError('Missing text payload');
+    }
+    try {
+      liveSession.sendClientContent({
+        turns: [{ parts: [{ text }] }],
+      });
+    } catch (err) {
+      logger?.error?.('Failed to forward text to live session', err);
+      sendError(`Failed to send text: ${err?.message || err}`);
+    }
+  }
+
+  async function handleAudioMessage(payload) {
+    if (!liveSession) {
+      return sendError('Not started');
+    }
+    const base64 = typeof payload?.data === 'string' ? payload.data : '';
+    if (!base64) {
+      return sendError('Missing audio payload');
+    }
+    const mime = typeof payload?.mime === 'string' && payload.mime ? payload.mime : 'audio/pcm;rate=16000';
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const blob = new Blob([buffer], { type: mime });
+      liveSession.sendRealtimeInput({ media: blob });
+    } catch (err) {
+      logger?.error?.('Failed to forward audio to live session', err);
+      sendError(`Failed to send audio: ${err?.message || err}`);
+    }
+  }
+
+  async function handleImageMessage(payload) {
+    if (!liveSession) {
+      return sendError('Not started');
+    }
+    const base64 = typeof payload?.data === 'string' ? payload.data : '';
+    if (!base64) {
+      return sendError('Missing image payload');
+    }
+    const mime = typeof payload?.mime === 'string' && payload.mime ? payload.mime : 'image/jpeg';
+    try {
+      const buffer = Buffer.from(base64, 'base64');
+      const blob = new Blob([buffer], { type: mime });
+      liveSession.sendRealtimeInput({ media: blob });
+    } catch (err) {
+      logger?.error?.('Failed to forward image to live session', err);
+      sendError(`Failed to send image: ${err?.message || err}`);
+    }
+  }
+
+  async function handleEndMessage() {
+    try {
+      await liveSession?.close?.();
+    } catch (err) {
+      logger?.warn?.('Error closing live session', err);
+    }
+    liveSession = null;
+    try {
+      if (ws.readyState === ws.OPEN || ws.readyState === ws.CLOSING) {
+        ws.close();
+      }
+    } catch (err) {
+      logger?.warn?.('Error closing client websocket', err);
+    }
+    closed = true;
+  }
+
+  ws.on('message', async (raw) => {
+    if (closed) return;
+    let payload;
+    try {
+      payload = JSON.parse(raw.toString());
+    } catch (err) {
+      return sendError('Invalid JSON payload');
+    }
+
+    const type = payload?.type;
+    switch (type) {
+      case 'start':
+        await startSession(payload);
+        break;
+      case 'text':
+        await handleTextMessage(payload);
+        break;
+      case 'audio':
+        await handleAudioMessage(payload);
+        break;
+      case 'image':
+        await handleImageMessage(payload);
+        break;
+      case 'end':
+        await handleEndMessage();
+        break;
+      default:
+        sendError('Unsupported message type');
+        break;
+    }
   });
 
-  // Forward Gemini replies back to the client
-  (async () => {
-    for await (const response of session.receive()) {
-      ws.send(JSON.stringify({ text: response.text || '' }));
+  ws.on('close', async () => {
+    closed = true;
+    try {
+      await liveSession?.close?.();
+    } catch (err) {
+      logger?.warn?.('Error closing live session after socket close', err);
     }
-  })();
-
-  ws.on('message', async (msg) => {
-    const data = JSON.parse(msg);
-    if (data.audio) {
-      const buf = Buffer.from(data.audio, 'base64');
-      await session.send_realtime_input({ audio: { data: buf, mime_type: data.mimeType || 'audio/pcm;rate=16000' } });
-    } else if (data.image) {
-      const buf = Buffer.from(data.image, 'base64');
-      await session.send_realtime_input({ image: { data: buf, mime_type: data.mimeType || 'image/jpeg' } });
-    }
+    liveSession = null;
   });
-
-  ws.on('close', () => session.close());
 });
