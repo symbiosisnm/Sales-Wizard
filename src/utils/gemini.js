@@ -46,7 +46,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             };
         }
         try {
-            const success = await audioHandler.startMacOSAudioCapture(geminiSessionRef);
+            const success = await audioHandler.startSystemAudioCapture(geminiSessionRef);
             return { success };
         } catch (error) {
             logger.error('Error starting macOS audio capture:', error);
@@ -56,7 +56,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('stop-macos-audio', async () => {
         try {
-            audioHandler.stopMacOSAudioCapture();
+            audioHandler.stopSystemAudioCapture();
             return { success: true };
         } catch (error) {
             logger.error('Error stopping macOS audio capture:', error);
@@ -64,9 +64,29 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    ipcMain.handle('start-system-audio', async (_, options = {}) => {
+        try {
+            const success = await audioHandler.startSystemAudioCapture(geminiSessionRef, options);
+            return { success };
+        } catch (error) {
+            logger.error('Error starting system audio capture:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('stop-system-audio', async () => {
+        try {
+            audioHandler.stopSystemAudioCapture();
+            return { success: true };
+        } catch (error) {
+            logger.error('Error stopping system audio capture:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('close-session', async () => {
         try {
-            audioHandler.stopMacOSAudioCapture();
+            audioHandler.stopSystemAudioCapture();
             reconnection.clearSessionParams();
             if (geminiSessionRef.current) {
                 await geminiSessionRef.current.close();
@@ -127,7 +147,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
 module.exports = {
     setupGeminiIpcHandlers,
-    stopMacOSAudioCapture: audioHandler.stopMacOSAudioCapture,
+    stopSystemAudioCapture: audioHandler.stopSystemAudioCapture,
+    startSystemAudioCapture: audioHandler.startSystemAudioCapture,
     sendToRenderer,
     initializeGeminiSession: sessionManager.initializeGeminiSession,
     getEnabledTools: sessionManager.getEnabledTools,
@@ -137,8 +158,6 @@ module.exports = {
     getCurrentSessionData: conversationStore.getCurrentSessionData,
     sendReconnectionContext: reconnection.sendReconnectionContext,
     killExistingSystemAudioDump: audioHandler.killExistingSystemAudioDump,
-    startMacOSAudioCapture: audioHandler.startMacOSAudioCapture,
-    convertStereoToMono: audioHandler.convertStereoToMono,
     sendAudioToGemini: audioHandler.sendAudioToGemini,
     attemptReconnection: reconnection.attemptReconnection,
 };
