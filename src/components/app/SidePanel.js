@@ -31,10 +31,13 @@ export class SidePanel extends LitElement {
             box-shadow: var(--glass-edge-highlight, inset 0 1px 0 rgba(255, 255, 255, 0.35));
         }
 
-        .transcripts {
+        .content {
             flex: 1;
             overflow-y: auto;
             padding: var(--main-content-padding);
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
             background: var(--panel-surface-background, rgba(255, 255, 255, 0.02));
             backdrop-filter: inherit;
             display: flex;
@@ -105,10 +108,44 @@ export class SidePanel extends LitElement {
             backdrop-filter: inherit;
         }
 
-        .notes-actions {
+        .structured-note {
+            border: 1px solid var(--glass-border, var(--border-color));
+            border-radius: 8px;
+            padding: 10px;
+            background: var(--panel-card-background, rgba(8, 12, 24, 0.25));
+            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .structured-note .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--subtle-text-color, rgba(255, 255, 255, 0.65));
+        }
+
+        .note-type {
+            text-transform: capitalize;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: var(--chip-background, rgba(255, 255, 255, 0.08));
+        }
+
+        .note-text {
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .note-actions,
+        .note-edit-actions {
             display: flex;
             justify-content: flex-end;
-            margin-top: 8px;
             gap: 8px;
         }
 
@@ -121,8 +158,7 @@ export class SidePanel extends LitElement {
             border-radius: 4px;
             font-size: 12px;
             cursor: pointer;
-            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
-            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            transition: background 0.15s ease;
         }
 
         .action-button:hover,
@@ -142,13 +178,21 @@ export class SidePanel extends LitElement {
             padding: 4px 6px;
             border-radius: 4px;
             font-size: 12px;
-            backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
-            -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
+            padding: 4px 6px;
         }
 
-        textarea {
+        .manual-notes {
+            border-top: 1px solid var(--glass-border, var(--border-color));
+            padding: var(--main-content-padding);
+            background: var(--panel-footer-background, rgba(255, 255, 255, 0.04));
+            backdrop-filter: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .manual-notes textarea {
             width: 100%;
-            height: 100%;
             min-height: 120px;
             padding: 10px;
             background: var(--panel-input-background, var(--input-background));
@@ -162,31 +206,84 @@ export class SidePanel extends LitElement {
             -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
-        textarea::placeholder {
-            color: var(--placeholder-color);
-        }
-
-        textarea:focus {
+        .manual-notes textarea:focus {
             outline: none;
             border-color: var(--focus-border-color);
             box-shadow: 0 0 0 2px var(--focus-box-shadow);
             background: var(--input-focus-background);
         }
+
+        .notes-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .notes-actions select {
+            flex: 1;
+            background: var(--button-background, rgba(255, 255, 255, 0.08));
+            color: var(--text-color);
+            border: 1px solid var(--glass-border, var(--button-border));
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .save-button {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--glass-border, var(--button-border));
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .save-button:hover {
+            background: var(--hover-background);
+        }
+
+        .empty-state {
+            font-size: 13px;
+            color: var(--subtle-text-color, rgba(255, 255, 255, 0.6));
+            border: 1px dashed var(--glass-border, rgba(255, 255, 255, 0.1));
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
     `;
 
     static properties = {
         transcripts: { type: Array },
-        notes: { type: String },
+        structuredNotes: { type: Array },
+        manualNotes: { type: String },
         selectedProfile: { type: String },
         exportFormat: { type: String },
+        _editingNoteId: { state: true },
+        _draftNote: { state: true },
     };
 
     constructor() {
         super();
         this.transcripts = [];
-        this.notes = '';
+        this.structuredNotes = [];
+        this.manualNotes = '';
         this.selectedProfile = 'interview';
         this.exportFormat = 'json';
+        this._editingNoteId = null;
+        this._draftNote = null;
+    }
+
+    _dispatchStructuredNotes(notes) {
+        this.dispatchEvent(
+            new CustomEvent('structured-notes-change', {
+                detail: { notes },
+                bubbles: true,
+                composed: true,
+            })
+        );
     }
 
     formatTimestamp(timestamp) {
@@ -205,8 +302,8 @@ export class SidePanel extends LitElement {
     _onNotesChange(e) {
         this.notes = e.target.value;
         this.dispatchEvent(
-            new CustomEvent('notes-change', {
-                detail: { value: this.notes },
+            new CustomEvent('manual-notes-change', {
+                detail: { value: this.manualNotes },
                 bubbles: true,
                 composed: true,
             })
@@ -222,7 +319,8 @@ export class SidePanel extends LitElement {
         try {
             const res = await window.electron.exportSession({
                 format: this.exportFormat,
-                notes: this.notes,
+                structuredNotes: this.structuredNotes,
+                manualNotes: this.manualNotes,
                 profile: this.selectedProfile,
             });
             if (res?.success) {
@@ -259,6 +357,7 @@ export class SidePanel extends LitElement {
     }
 
     render() {
+        const notes = Array.isArray(this.structuredNotes) ? this.structuredNotes : [];
         return html`
             <div class="transcripts">
                 <div class="transcripts-header">
@@ -294,18 +393,19 @@ export class SidePanel extends LitElement {
                         : html`<div class="empty-transcript">No transcript captured yet.</div>`}
                 </div>
             </div>
-            <div class="notes">
+            <div class="manual-notes">
+                <div class="section-title">Manual Notes</div>
                 <textarea
-                    .value=${this.notes}
-                    @input=${this._onNotesChange}
-                    placeholder="Notes..."
+                    .value=${this.manualNotes}
+                    @input=${this._onManualNotesChange}
+                    placeholder="Jot down anything you'd like to remember..."
                 ></textarea>
                 <div class="notes-actions">
                     <select class="format-select" .value=${this.exportFormat} @change=${this._onFormatChange}>
                         <option value="json">JSON</option>
                         <option value="markdown">Markdown</option>
                     </select>
-                    <button class="save-button" @click=${this._onSaveSession}>Save session</button>
+                    <button class="save-button" @click=${this._onSaveSession}>Export session</button>
                 </div>
             </div>
         `;
