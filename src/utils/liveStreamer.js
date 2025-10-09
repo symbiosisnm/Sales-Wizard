@@ -3,7 +3,7 @@ import defaultLogger from './logger.js';
 import { generateNotesFromResponse } from './summarizer.js';
 
 // Fallback to console if the logger script fails to attach to globalThis
-const logger = globalThis.logger || defaultLogger || console;
+const getLogger = () => globalThis.logger || defaultLogger || console;
 
 async function startElectronLiveStream({ onResponse, onStatus, onError }) {
   const electronApi = typeof window !== 'undefined' ? window?.electron : undefined;
@@ -116,6 +116,38 @@ export async function startLiveStreaming({
   }
 
   const client = new LLMClient();
+  const log = getLogger();
+  let audioCleanup = () => {};
+  let stopScreenCapture = () => { onStatus('Screen capture ended'); };
+  let stopped = false;
+
+  const safeCall = (label, fn) => {
+    try {
+      fn?.();
+    } catch (err) {
+      log.warn(`${label} failed:`, err);
+    }
+  };
+
+  const stopAll = () => {
+    if (stopped) return;
+    stopped = true;
+    const ws = client.ws;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      safeCall('Ending live session', () => client.end());
+    } else {
+      safeCall('Closing WebSocket session', () => {
+        try {
+          ws?.close?.();
+        } catch (err) {
+          log.warn('WebSocket close failed:', err);
+        }
+      });
+    }
+    safeCall('Cleaning audio stream', () => audioCleanup());
+    safeCall('Cleaning screen capture', () => stopScreenCapture());
+  };
+
   client.onText = msg => {
     try {
       if (typeof msg === 'string') {
@@ -128,22 +160,28 @@ export async function startLiveStreaming({
         }
       }
     } catch (err) {
-      logger.warn('Error handling text:', err);
+      log.warn('Error handling text:', err);
     }
   };
-  client.onStatus = status => {
-    try {
-      onStatus(status);
-    } catch (_e) {
-      /* empty */
+  client.onStatus = onStatus;
+  client.onError = err => {
+    const message = typeof err === 'string' ? err : err?.message ? err.message : String(err);
+    log.error('Live streaming client error:', err ?? message);
+    onError(message);
+    if (!stopped) {
+      onStatus(`Error: ${message}`);
+      stopAll();
     }
   };
-  client.onError = onError;
 
   await client.connect();
 
+  if (stopped) {
+    return stopAll;
+  }
+
   // Audio capture
-  let audioStream; let audioCleanup = () => {};
+  let audioStream;
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     onStatus({ audio: 'capturing', message: 'Microphone streaming' });
@@ -234,8 +272,7 @@ export async function startLiveStreaming({
       };
     }
   } catch (err) {
-    logger.warn('Audio streaming failed to initialise:', err);
-    onStatus({ audio: 'error', message: `Audio streaming failed to initialise: ${err?.message || err}` });
+    log.warn('Audio streaming failed to initialise:', err);
   }
 
   // Screen capture
@@ -263,7 +300,7 @@ export async function startLiveStreaming({
     disposableNodes.clear();
   };
 
-  const stopScreenCapture = () => {
+  stopScreenCapture = () => {
     if (frameInterval) {
       clearInterval(frameInterval);
       frameInterval = null;
@@ -373,7 +410,7 @@ export async function startLiveStreaming({
         try {
           videoElement.srcObject = screenStream;
         } catch (err) {
-          logger.warn('Unable to bind stream to video element:', err);
+          log.warn('Unable to bind stream to video element:', err);
         }
         const settings = track.getSettings?.() || {};
         if (settings.width) videoElement.width = settings.width;
@@ -424,7 +461,7 @@ export async function startLiveStreaming({
             await encodeBlobAndSend(blob);
             return;
           } catch (err) {
-            logger.warn('ImageCapture.takePhoto failed, attempting grabFrame fallback:', err);
+            log.warn('ImageCapture.takePhoto failed, attempting grabFrame fallback:', err);
             useGrabFrame = true;
           }
         }
@@ -436,7 +473,7 @@ export async function startLiveStreaming({
             await encodeBlobAndSend(blob);
             return;
           } catch (err) {
-            logger.warn('ImageCapture.grabFrame failed, attempting canvas fallback:', err);
+            log.warn('ImageCapture.grabFrame failed, attempting canvas fallback:', err);
             useCanvasFallback = true;
           }
         }
@@ -446,7 +483,7 @@ export async function startLiveStreaming({
           await encodeBlobAndSend(blob);
         }
       } catch (err) {
-        logger.warn('Error capturing screen frame:', err);
+        log.warn('Error capturing screen frame:', err);
       } finally {
         isCapturing = false;
       }
@@ -457,16 +494,13 @@ export async function startLiveStreaming({
     const msg = err?.name === 'NotAllowedError'
       ? 'Screen capture request was blocked or denied. Your browser may require a reload before prompting again.'
       : `Screen streaming failed to initialise: ${err?.message || err}`;
-    logger.warn(msg, err);
+    log.warn(msg, err);
     onError(msg);
-    onStatus({ screen: 'error', message: msg });
+    onStatus(`Error: ${msg}`);
     stopScreenCapture();
+    stopAll();
   }
 
-  return () => {
-    client.end();
-    audioCleanup();
-    stopScreenCapture();
-  };
+  return stopAll;
 }
 

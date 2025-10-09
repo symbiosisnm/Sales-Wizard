@@ -6,6 +6,13 @@ const DEFAULT_WS = (import.meta.env.VITE_SERVER_URL || 'http://localhost:8787')
   .replace('http', 'ws')
   .replace('https', 'wss') + '/ws/live';
 
+const MAX_PAYLOAD_LOG_LENGTH = 512;
+
+const describePayload = (payload: string): string =>
+  payload.length > MAX_PAYLOAD_LOG_LENGTH ? `${payload.slice(0, MAX_PAYLOAD_LOG_LENGTH)}…` : payload;
+
+const getLogger = (): Console => ((globalThis as any)?.logger as Console) || console;
+
 export interface LLMClientOptions {
   url?: string;
 }
@@ -70,8 +77,8 @@ export class LLMClient {
         this.ws.onopen = () => {
           opened = true;
           clearTimeout(timeout);
-          this._send({ type: 'start', model, responseModalities, systemInstruction });
           this.onStatus('WS open');
+          this._send({ type: 'start', model, responseModalities, systemInstruction });
           resolve(true);
         };
         this.ws.onclose = () => {
@@ -107,11 +114,38 @@ export class LLMClient {
   }
 
   private _send(obj: OutgoingMessage): void {
+    const log = getLogger();
+    let payload: string;
     try {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify(obj));
-      }
-    } catch {}
+      payload = JSON.stringify(obj);
+    } catch (err: any) {
+      const msg = `Unable to serialise payload for send: ${err?.message || err}`;
+      log.error(msg, err);
+      this.onError(msg);
+      return;
+    }
+
+    if (!this.ws) {
+      const msg = `Cannot send message, WebSocket not initialised. Payload: ${describePayload(payload)}`;
+      log.warn(msg);
+      this.onError(msg);
+      return;
+    }
+
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      const msg = `Cannot send message, WebSocket state ${this.ws.readyState}. Payload: ${describePayload(payload)}`;
+      log.warn(msg);
+      this.onError(msg);
+      return;
+    }
+
+    try {
+      this.ws.send(payload);
+    } catch (err: any) {
+      const msg = `WebSocket send failed: ${err?.message || err}. Payload: ${describePayload(payload)}`;
+      log.error(msg, err);
+      this.onError(msg);
+    }
   }
 
   sendText(text: string): void {

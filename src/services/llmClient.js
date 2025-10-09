@@ -2,8 +2,18 @@
 // Mirrors the desktop implementation but with browser-friendly defaults.
 
 import { resolveLiveWsUrl } from './backendConfig.js';
+import defaultLogger from '../utils/logger.js';
 
 const DEFAULT_WS = resolveLiveWsUrl();
+const getLogger = () => globalThis.logger || defaultLogger || console;
+const MAX_PAYLOAD_LOG_LENGTH = 512;
+
+const describePayload = payload => {
+    if (typeof payload !== 'string') return '[unserializable payload]';
+    return payload.length > MAX_PAYLOAD_LOG_LENGTH
+        ? `${payload.slice(0, MAX_PAYLOAD_LOG_LENGTH)}…`
+        : payload;
+};
 
 export class LLMClient {
     /** @type {WebSocket|null} */
@@ -39,14 +49,14 @@ export class LLMClient {
                 this.ws.onopen = () => {
                     opened = true;
                     clearTimeout(timeout);
-                    const instr = systemInstruction ?? this._buildSystemInstruction();
+                    const instr = systemInstruction || this._buildSystemInstruction();
+                    this.onStatus('WS open');
                     this._send({
                         type: 'start',
                         model,
                         responseModalities,
                         systemInstruction: instr,
                     });
-                    this._emitStatus('WS open', { connection: 'connected', open: true });
                     resolve(true);
                 };
 
@@ -154,12 +164,39 @@ export class LLMClient {
     }
 
     _send(obj) {
+        const log = getLogger();
+        let payload;
         try {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify(obj));
-            }
-        } catch (e) {
-            /* empty */
+            payload = JSON.stringify(obj);
+        } catch (err) {
+            const msg = `Unable to serialise payload for send: ${err?.message || err}`;
+            log.error(msg, err);
+            this.onError(msg);
+            return;
+        }
+
+        const payloadPreview = describePayload(payload);
+
+        if (!this.ws) {
+            const msg = `Cannot send message, WebSocket not initialised. Payload: ${payloadPreview}`;
+            log.warn(msg);
+            this.onError(msg);
+            return;
+        }
+
+        if (this.ws.readyState !== WebSocket.OPEN) {
+            const msg = `Cannot send message, WebSocket state ${this.ws.readyState}. Payload: ${payloadPreview}`;
+            log.warn(msg);
+            this.onError(msg);
+            return;
+        }
+
+        try {
+            this.ws.send(payload);
+        } catch (err) {
+            const msg = `WebSocket send failed: ${err?.message || err}. Payload: ${payloadPreview}`;
+            log.error(msg, err);
+            this.onError(msg);
         }
     }
 
