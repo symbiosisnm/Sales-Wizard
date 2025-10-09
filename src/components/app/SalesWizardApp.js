@@ -180,6 +180,7 @@ export class SalesWizardApp extends LitElement {
         this.notes = [];
         this.noteText = '';
         this.audioLevel = 0;
+        this._saveConversationTurnHandler = null;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -199,9 +200,23 @@ export class SalesWizardApp extends LitElement {
             this._clickThroughHandler = (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
             };
+            this._saveConversationTurnHandler = (_, payload) => {
+                if (!payload) {
+                    return;
+                }
+
+                const { fullHistory, turn } = payload;
+                if (Array.isArray(fullHistory)) {
+                    this.transcripts = fullHistory.map(item => ({ ...item }));
+                } else if (turn && typeof turn === 'object') {
+                    this.transcripts = [...this.transcripts, { ...turn }];
+                }
+                this.requestUpdate();
+            };
             window.electron.onUpdateResponse?.(this._updateResponseHandler);
             window.electron.onUpdateStatus?.(this._updateStatusHandler);
             window.electron.onClickThroughToggled?.(this._clickThroughHandler);
+            window.electron.onSaveConversationTurn?.(this._saveConversationTurnHandler);
         }
 
         // Start the voice assistant to listen for spoken questions and
@@ -295,6 +310,7 @@ export class SalesWizardApp extends LitElement {
             window.electron.removeUpdateResponseListener?.(this._updateResponseHandler);
             window.electron.removeUpdateStatusListener?.(this._updateStatusHandler);
             window.electron.removeClickThroughToggledListener?.(this._clickThroughHandler);
+            window.electron.removeSaveConversationTurnListener?.(this._saveConversationTurnHandler);
         }
     }
 
