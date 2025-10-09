@@ -2,8 +2,7 @@ require('dotenv').config();
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
-require('dotenv').config();
-require("./utils/logger");
+require('./utils/logger');
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
@@ -11,6 +10,9 @@ const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = requir
 const { registerSecureStoreIpc } = require('./utils/secureStore');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
 const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
+const settingsStore = require('./utils/settingsStore');
+
+const STEALTH = process.env.STEALTH === '1';
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -20,17 +22,22 @@ let contextParams = {
     disallowedTopics: '',
 };
 
-// Initialize random process names for stealth
-const randomNames = initializeRandomProcessNames();
+// Initialize random process names for stealth when enabled
+const randomNames = STEALTH ? initializeRandomProcessNames() : null;
 
 function createMainWindow() {
-    mainWindow = createWindow(sendToRenderer, geminiSessionRef, randomNames);
+    const contentProtectionEnabled = settingsStore.getSetting('contentProtection', false);
+    mainWindow = createWindow(sendToRenderer, geminiSessionRef, randomNames, {
+        contentProtectionEnabled,
+    });
     return mainWindow;
 }
 
 app.whenReady().then(async () => {
-    // Apply anti-analysis measures with random delay
-    await applyAntiAnalysisMeasures();
+    if (STEALTH) {
+        // Apply anti-analysis measures with random delay
+        await applyAntiAnalysisMeasures();
+    }
 
     createMainWindow();
     setupGeminiIpcHandlers(geminiSessionRef);
@@ -83,11 +90,15 @@ function setupGeneralIpcHandlers() {
         }
     });
 
-    ipcMain.handle('update-content-protection', async () => {
+    ipcMain.handle('update-content-protection', async (_event, enabled) => {
         try {
+            let contentProtection = settingsStore.getSetting('contentProtection', false);
+            if (typeof enabled === 'boolean') {
+                contentProtection = enabled;
+                settingsStore.setSetting('contentProtection', contentProtection);
+            }
+
             if (mainWindow) {
-                // Get content protection setting from localStorage via Sales Wizard
-                const contentProtection = await mainWindow.webContents.executeJavaScript('salesWizard.getContentProtection()');
                 mainWindow.setContentProtection(contentProtection);
                 logger.info('Content protection updated:', contentProtection);
             }
@@ -95,6 +106,15 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             logger.error('Error updating content protection:', error);
             return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('get-content-protection', async () => {
+        try {
+            return settingsStore.getSetting('contentProtection', false);
+        } catch (error) {
+            logger.error('Error retrieving content protection state:', error);
+            return false;
         }
     });
 

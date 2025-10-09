@@ -344,8 +344,8 @@ export class AdvancedView extends LitElement {
         this.maxTokensPerMin = 1000000;
         this.throttleAtPercent = 75;
 
-        // Content protection default
-        this.contentProtection = true;
+        // Content protection default (disabled until user opts in)
+        this.contentProtection = false;
 
         // History limit default
         this.historyLimit = 50;
@@ -474,15 +474,38 @@ export class AdvancedView extends LitElement {
     }
 
     // Content protection methods
-    loadContentProtectionSetting() {
-        const contentProtection = localStorage.getItem('contentProtection');
-        this.contentProtection = contentProtection !== null ? contentProtection === 'true' : true;
+    async loadContentProtectionSetting() {
+        let enabled = false;
+
+        if (window.electron?.getContentProtection) {
+            try {
+                enabled = await window.electron.getContentProtection();
+            } catch (error) {
+                logger.error('Failed to load content protection:', error);
+            }
+        }
+
+        const legacySetting = localStorage.getItem('contentProtection');
+        if (legacySetting !== null) {
+            const legacyEnabled = legacySetting === 'true';
+            if (legacyEnabled && !enabled && window.electron?.updateContentProtection) {
+                try {
+                    await window.electron.updateContentProtection(true);
+                    enabled = true;
+                } catch (error) {
+                    logger.error('Failed to migrate legacy content protection setting:', error);
+                }
+            }
+            localStorage.removeItem('contentProtection');
+        }
+
+        this.contentProtection = Boolean(enabled);
+        this.requestUpdate();
     }
 
     async handleContentProtectionChange(e) {
         this.contentProtection = e.target.checked;
-        localStorage.setItem('contentProtection', this.contentProtection.toString());
-        
+
         // Update the window's content protection in real-time
         if (window.electron?.updateContentProtection) {
             try {
@@ -491,7 +514,7 @@ export class AdvancedView extends LitElement {
                 logger.error('Failed to update content protection:', error);
             }
         }
-        
+
         this.requestUpdate();
     }
 
@@ -535,8 +558,9 @@ export class AdvancedView extends LitElement {
                         <span>🔒 Content Protection</span>
                     </div>
                     <div class="advanced-description">
-                        Content protection makes the application window invisible to screen sharing and recording software. 
+                        Content protection makes the application window invisible to screen sharing and recording software.
                         This is useful for privacy when sharing your screen, but may interfere with certain display setups like DisplayLink.
+                        The feature stays off unless you explicitly enable it.
                     </div>
 
                     <div class="form-grid">
@@ -549,7 +573,7 @@ export class AdvancedView extends LitElement {
                                 @change=${this.handleContentProtectionChange}
                             />
                             <label for="content-protection" class="checkbox-label">
-                                Enable content protection (stealth mode)
+                                Hide window from screen sharing tools
                             </label>
                         </div>
                         <div class="form-description" style="margin-left: 22px;">
