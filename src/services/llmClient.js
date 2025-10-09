@@ -49,11 +49,15 @@ export class LLMClient {
                         responseModalities,
                         systemInstruction: instr,
                     });
-                    this.onStatus('WS open');
+                    this.onStatus('WS open', { open: true });
                     resolve(true);
                 };
-                this.ws.onclose = () => {
-                    this.onStatus('WS closed');
+                this.ws.onclose = evt => {
+                    this.onStatus('WS closed', {
+                        code: evt?.code,
+                        reason: evt?.reason,
+                        terminal: true,
+                    });
                     if (!opened) {
                         clearTimeout(timeout);
                         const msg = 'WS closed before open';
@@ -63,7 +67,7 @@ export class LLMClient {
                 };
                 this.ws.onerror = e => {
                     const msg = `WS error: ${e?.message || String(e)}`;
-                    this.onError(msg);
+                    this.onError(msg, e);
                     if (!opened) {
                         clearTimeout(timeout);
                         reject(new Error(msg));
@@ -72,10 +76,10 @@ export class LLMClient {
                 this.ws.onmessage = evt => {
                     try {
                         const msg = JSON.parse(evt.data);
-                        if (msg.type === 'status') this.onStatus(msg.msg);
-                        else if (msg.type === 'error') this.onError(msg.msg);
-                        else if (msg.type === 'model_text') this.onText(msg.text);
-                        else if (msg.type === 'model_audio') this.onAudio(msg.data, msg.mime);
+                        if (msg.type === 'status') this.onStatus(msg.message ?? msg.msg ?? '', msg);
+                        else if (msg.type === 'error') this.onError(msg.message ?? msg.msg ?? 'Unknown error', msg);
+                        else if (msg.type === 'model_text' && typeof msg.text === 'string') this.onText(msg.text);
+                        else if (msg.type === 'model_audio' && typeof msg.data === 'string') this.onAudio(msg.data, msg.mime || 'audio/pcm;rate=16000');
                     } catch (e) {
                         /* empty */
                     }
