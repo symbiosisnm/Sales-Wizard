@@ -13,4 +13,6 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - run: npm test
+      - run: npm run lint
+      - run: npm run test:backend
+      - run: npm run test:renderer
