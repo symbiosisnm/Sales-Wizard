@@ -25,6 +25,7 @@ export class LLMClient {
         return new Promise((resolve, reject) => {
             try {
                 this.ws = new WebSocket(this.url);
+                this._emitStatus({ connection: 'connecting', message: 'Opening WebSocket' });
                 let opened = false;
                 const timeout = setTimeout(() => {
                     if (!opened) {
@@ -49,11 +50,11 @@ export class LLMClient {
                         responseModalities,
                         systemInstruction: instr,
                     });
-                    this.onStatus('WS open');
+                    this._emitStatus({ connection: 'connected', message: 'WS open' });
                     resolve(true);
                 };
                 this.ws.onclose = () => {
-                    this.onStatus('WS closed');
+                    this._emitStatus({ connection: 'disconnected', message: 'WS closed' });
                     if (!opened) {
                         clearTimeout(timeout);
                         const msg = 'WS closed before open';
@@ -63,6 +64,7 @@ export class LLMClient {
                 };
                 this.ws.onerror = e => {
                     const msg = `WS error: ${e?.message || String(e)}`;
+                    this._emitStatus({ connection: 'error', message: msg });
                     this.onError(msg);
                     if (!opened) {
                         clearTimeout(timeout);
@@ -72,7 +74,7 @@ export class LLMClient {
                 this.ws.onmessage = evt => {
                     try {
                         const msg = JSON.parse(evt.data);
-                        if (msg.type === 'status') this.onStatus(msg.msg);
+                        if (msg.type === 'status') this._emitStatus(this._formatStatusPayload(msg.msg));
                         else if (msg.type === 'error') this.onError(msg.msg);
                         else if (msg.type === 'model_text') this.onText(msg.text);
                         else if (msg.type === 'model_audio') this.onAudio(msg.data, msg.mime);
@@ -100,6 +102,57 @@ export class LLMClient {
         } catch (e) {
             return undefined;
         }
+    }
+
+    _emitStatus(payload) {
+        try {
+            this.onStatus(payload);
+        } catch (_e) {
+            /* empty */
+        }
+    }
+
+    _formatStatusPayload(status) {
+        if (status && typeof status === 'object') {
+            return {
+                ...status,
+                message: typeof status.message === 'string' ? status.message : status.msg || status.text || '',
+            };
+        }
+
+        if (typeof status === 'string') {
+            const payload = { message: status };
+            const connection = this._inferState('connection', status);
+            if (connection) payload.connection = connection;
+            const audio = this._inferState('audio', status);
+            if (audio) payload.audio = audio;
+            const screen = this._inferState('screen', status);
+            if (screen) payload.screen = screen;
+            return payload;
+        }
+
+        return { message: status ? String(status) : '' };
+    }
+
+    _inferState(kind, message) {
+        if (typeof message !== 'string') return null;
+        if (kind === 'connection') {
+            if (/(ws open|connected|ready|live session connected)/i.test(message)) return 'connected';
+            if (/(connecting|opening|initialising|initializing)/i.test(message)) return 'connecting';
+            if (/(closed|ended|disconnected|session closed)/i.test(message)) return 'disconnected';
+            if (/(error|invalid|timeout|failed)/i.test(message)) return 'error';
+        }
+        if (kind === 'audio') {
+            if (/(listening|microphone (active|streaming)|audio capture started)/i.test(message)) return 'capturing';
+            if (/(microphone idle|audio capture stopped|microphone muted)/i.test(message)) return 'idle';
+            if (/(audio|microphone).*(error|denied|failed)/i.test(message)) return 'error';
+        }
+        if (kind === 'screen') {
+            if (/(screen capture (started|active)|sharing screen|screen streaming)/i.test(message)) return 'sharing';
+            if (/(screen capture ended|stopped|screen idle)/i.test(message)) return 'idle';
+            if (/(screen capture request was blocked|screen streaming failed|screen capture error)/i.test(message)) return 'error';
+        }
+        return null;
     }
 
     _send(obj) {
