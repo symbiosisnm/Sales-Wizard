@@ -3,7 +3,7 @@ if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 require('dotenv').config();
-require("./utils/logger");
+require('./utils/logger');
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
@@ -11,6 +11,43 @@ const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = requir
 const { registerSecureStoreIpc } = require('./utils/secureStore');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
 const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
+
+const DEFAULT_APP_NAME = 'Sales Wizard';
+const appNameOverride = (process.env.APP_NAME || '').trim();
+
+function resolveAppName() {
+    const loggerInstance = globalThis.logger || console;
+    const currentAppName = typeof app.getName === 'function' ? app.getName() : '';
+
+    const sanitize = name => {
+        if (typeof name !== 'string') {
+            return '';
+        }
+        const trimmed = name.trim();
+        if (!trimmed) {
+            return '';
+        }
+        if (trimmed.toLowerCase() === 'sales-wizard') {
+            return DEFAULT_APP_NAME;
+        }
+        return trimmed;
+    };
+
+    const sanitizedCurrent = sanitize(currentAppName);
+    const finalName = appNameOverride || sanitizedCurrent || DEFAULT_APP_NAME;
+
+    if (typeof app.setName === 'function' && finalName && finalName !== currentAppName) {
+        try {
+            app.setName(finalName);
+        } catch (error) {
+            loggerInstance?.warn?.('Failed to set application name', error);
+        }
+    }
+
+    return finalName || DEFAULT_APP_NAME;
+}
+
+const resolvedAppName = resolveAppName();
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -36,6 +73,17 @@ app.whenReady().then(async () => {
     setupGeminiIpcHandlers(geminiSessionRef);
     setupGeneralIpcHandlers();
     registerSecureStoreIpc();
+});
+
+app.on('browser-window-created', (_event, window) => {
+    window.webContents.once('dom-ready', () => {
+        try {
+            window.webContents.send('app-name-updated', resolvedAppName);
+        } catch (error) {
+            const loggerInstance = globalThis.logger || console;
+            loggerInstance?.warn?.('Failed to send application name to renderer', error);
+        }
+    });
 });
 
 app.on('window-all-closed', () => {
@@ -104,6 +152,15 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             logger.error('Error getting random display name:', error);
             return 'System Monitor';
+        }
+    });
+
+    ipcMain.handle('get-app-name', async () => {
+        try {
+            return resolvedAppName;
+        } catch (error) {
+            logger.error('Error resolving app name:', error);
+            return resolvedAppName;
         }
     });
 
