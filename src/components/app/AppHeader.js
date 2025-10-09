@@ -1,5 +1,12 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
-import { getAppName } from '../../utils/config.js';
+import {
+    DEFAULT_APP_NAME,
+    fetchAppName,
+    subscribeToAppNameUpdates,
+    computeHeaderTitle,
+    normalizeAppName,
+    getElectronApi,
+} from '../../utils/appName.js';
 import './AudioLevelIndicator.js';
 
 export class AppHeader extends LitElement {
@@ -207,28 +214,24 @@ export class AppHeader extends LitElement {
         this.isClickThrough = false;
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
-        this.appName = getAppName();
+        this.appName = DEFAULT_APP_NAME;
         this._timerInterval = null;
         this.audioLevel = 0;
-        this._appNameInterval = null;
-        this.connectionState = 'disconnected';
-        this.audioState = 'idle';
-        this.screenState = 'idle';
-        this.connectionMessage = 'WebSocket disconnected';
-        this.audioMessage = 'Microphone idle';
-        this.screenMessage = 'Screen capture idle';
+        this._removeAppNameListener = null;
+        this._pendingAppNameRequest = Promise.resolve(this.appName);
     }
 
     connectedCallback() {
         super.connectedCallback();
         this._startTimer();
-        this._startAppNameWatcher();
+        this._subscribeToAppNameUpdates();
+        this._requestAppName();
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._stopTimer();
-        this._stopAppNameWatcher();
+        this._unsubscribeFromAppNameUpdates();
     }
 
     updated(changedProperties) {
@@ -273,34 +276,41 @@ export class AppHeader extends LitElement {
         }
     }
 
-    _startAppNameWatcher() {
-        this._stopAppNameWatcher();
-        this._appNameInterval = setInterval(() => {
-            const name = getAppName();
-            if (name !== this.appName) {
-                this.appName = name;
-            }
-        }, 1000);
+    _applyAppName(name) {
+        const normalizedName = normalizeAppName(name, DEFAULT_APP_NAME);
+        if (normalizedName !== this.appName) {
+            this.appName = normalizedName;
+        }
+        return this.appName;
     }
 
-    _stopAppNameWatcher() {
-        if (this._appNameInterval) {
-            clearInterval(this._appNameInterval);
-            this._appNameInterval = null;
+    _requestAppName() {
+        const electronApi = getElectronApi();
+        this._pendingAppNameRequest = fetchAppName(electronApi, this.appName)
+            .then(resolvedName => this._applyAppName(resolvedName))
+            .catch(() => this._applyAppName(DEFAULT_APP_NAME));
+    }
+
+    _subscribeToAppNameUpdates() {
+        const electronApi = getElectronApi();
+        this._unsubscribeFromAppNameUpdates();
+        this._removeAppNameListener = subscribeToAppNameUpdates(electronApi, name => this._applyAppName(name), this.appName);
+    }
+
+    _unsubscribeFromAppNameUpdates() {
+        if (this._removeAppNameListener) {
+            try {
+                this._removeAppNameListener();
+            } catch (_error) {
+                // cleanup best effort only
+            }
         }
+
+        this._removeAppNameListener = null;
     }
 
     getViewTitle() {
-        const titles = {
-            onboarding: `Welcome to ${this.appName}`,
-            main: this.appName,
-            customize: 'Customize',
-            help: 'Help & Shortcuts',
-            history: 'Conversation History',
-            advanced: 'Advanced Tools',
-            assistant: this.appName,
-        };
-        return titles[this.currentView] || this.appName;
+        return computeHeaderTitle(this.currentView, this.appName, DEFAULT_APP_NAME);
     }
 
     getElapsedTime() {

@@ -30,6 +30,7 @@ const api = {
     ipcRenderer.invoke('update-content-protection', enabled),
   getContentProtection: () => ipcRenderer.invoke('get-content-protection'),
   getRandomDisplayName: () => ipcRenderer.invoke('get-random-display-name'),
+  getAppName: () => ipcRenderer.invoke('get-app-name'),
   exportSession: options => ipcRenderer.invoke('export-session', options),
   historyList: () => ipcRenderer.invoke('history:list'),
   historyGet: sessionId => ipcRenderer.invoke('history:get', sessionId),
@@ -69,7 +70,10 @@ const api = {
   onSaveConversationTurn: handler =>
     ipcRenderer.on('save-conversation-turn', handler),
   removeSaveConversationTurnListener: handler =>
-    ipcRenderer.removeListener('save-conversation-turn', handler)
+    ipcRenderer.removeListener('save-conversation-turn', handler),
+  onAppNameUpdated: handler => ipcRenderer.on('app-name-updated', handler),
+  removeAppNameUpdatedListener: handler =>
+    ipcRenderer.removeListener('app-name-updated', handler)
 };
 
 contextBridge.exposeInMainWorld('electron', api);

@@ -97,9 +97,9 @@ requirements and configuration for this feature.
 
 | Variable         | Description                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------- |
-| `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Sales Wizard`.                |
-| `AUTH_TOKEN`     | Secret token required by the backend to authorize `/ask`, `/history/*`, and `/live` access. Provide it via the `AUTH_TOKEN` header or query string. |
-| `ALLOWED_ORIGINS`| Comma-separated list of origins permitted to call backend HTTP and WebSocket endpoints. Leave blank to allow any origin. |
+| `APP_NAME`       | Human-readable application name resolved in the main process and broadcast to renderer UI surfaces. Defaults to `Sales Wizard`. |
+| `AUTH_TOKEN`     | Secret token required by the backend to authorize live streaming connections.               |
+| `ALLOWED_ORIGINS`| Comma-separated list of origins permitted to open live WebSocket connections.               |
 
 #### IPC Channels
 
