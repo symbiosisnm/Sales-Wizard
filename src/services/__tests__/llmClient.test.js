@@ -108,6 +108,9 @@ test('LLMClient end sends termination control message', async () => {
   const { LLMClient } = await import('../../services/llmClient.js');
   const client = new LLMClient({ url: 'ws://example.test' });
 
+  const statuses = [];
+  client.onStatus = (msg, payload) => statuses.push({ msg, payload });
+
   await client.connect();
   const ws = FakeWebSocket.latest();
   assert.ok(ws);
@@ -115,5 +118,40 @@ test('LLMClient end sends termination control message', async () => {
   client.end();
   assert.deepStrictEqual(ws.sent.at(-1), { type: 'end' });
   assert.strictEqual(ws.readyState, FakeWebSocket.CLOSED);
+  assert.deepStrictEqual(statuses.at(-1), {
+    msg: 'WS closed',
+    payload: {
+      connection: 'disconnected',
+      code: 1000,
+      reason: 'client close',
+      terminal: true,
+      message: 'WS closed',
+    },
+  });
+});
+
+test('LLMClient surfaces parse failures and unknown payload types', async () => {
+  FakeWebSocket.reset();
+  const { LLMClient } = await import('../../services/llmClient.js');
+  const client = new LLMClient({ url: 'ws://example.test' });
+
+  const errors = [];
+  const statuses = [];
+  client.onError = (message, payload) => errors.push({ message, payload });
+  client.onStatus = (msg, payload) => statuses.push({ msg, payload });
+
+  await client.connect();
+  const ws = FakeWebSocket.latest();
+  assert.ok(ws);
+
+  ws.onmessage?.({ data: '{' });
+  ws.onmessage?.({ data: JSON.stringify({ type: 'custom', foo: 'bar' }) });
+
+  assert.strictEqual(errors.at(-1)?.message, 'Failed to parse message');
+  assert.strictEqual(errors.at(-1)?.payload?.raw, '{');
+  assert.deepStrictEqual(statuses.at(-1), {
+    msg: 'Unhandled message',
+    payload: { type: 'custom', foo: 'bar', message: 'Unhandled message' },
+  });
 });
 
