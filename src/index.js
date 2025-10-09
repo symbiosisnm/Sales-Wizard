@@ -127,12 +127,12 @@ function setupGeneralIpcHandlers() {
         }
     });
 
-    ipcMain.handle('set-context-params', async (_event, params) => {
+    ipcMain.handle('context:set', async (_event, params) => {
         contextParams = { ...contextParams, ...params };
-        return { success: true };
+        return { success: true, data: contextParams };
     });
 
-    ipcMain.handle('get-context-params', async () => {
+    ipcMain.handle('context:get', async () => {
         return { success: true, data: contextParams };
     });
 

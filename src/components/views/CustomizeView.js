@@ -589,7 +589,7 @@ export class CustomizeView extends LitElement {
 
     updateContextParams() {
         try {
-            window.electron?.setContextParams?.({
+            window.electron?.contextSet?.({
                 allowedSources: this.allowedSources,
                 toneLength: this.toneLength,
                 disallowedTopics: this.disallowedTopics,

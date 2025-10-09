@@ -4,6 +4,35 @@ const conversationStore = require('./conversationStore');
 const audioHandler = require('./audioHandler');
 const reconnection = require('./reconnection');
 const sessionManager = require('./sessionManager');
+const { resolveBackendOrigin } = require('../services/backendConfig.js');
+
+const API_BASE = resolveBackendOrigin();
+
+async function fetchJson(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {}),
+        },
+    });
+
+    if (!response.ok) {
+        const message = `Request failed with status ${response.status}`;
+        throw new Error(message);
+    }
+
+    if (response.status === 204) {
+        return null;
+    }
+
+    try {
+        return await response.json();
+    } catch (error) {
+        logger.warn('Failed to parse JSON response:', error);
+        return null;
+    }
+}
 
 function setupGeminiIpcHandlers(geminiSessionRef) {
     global.geminiSessionRef = geminiSessionRef;
@@ -140,6 +169,87 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: true };
         } catch (error) {
             logger.error('Error updating Google Search setting:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:list', async () => {
+        try {
+            const data = await fetchJson(`${API_BASE}/history`);
+            return { success: true, data: Array.isArray(data) ? data : [] };
+        } catch (error) {
+            logger.error('Error listing history sessions:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:get', async (_event, sessionId) => {
+        if (!sessionId) {
+            return { success: false, error: 'Session ID is required' };
+        }
+
+        try {
+            const data = await fetchJson(`${API_BASE}/history/${sessionId}`);
+            return { success: true, data };
+        } catch (error) {
+            logger.error('Error retrieving history session:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:clear', async () => {
+        try {
+            await fetchJson(`${API_BASE}/history`, { method: 'DELETE' });
+            return { success: true };
+        } catch (error) {
+            logger.error('Error clearing history:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:set-limit', async (_event, limit) => {
+        try {
+            await fetchJson(`${API_BASE}/history/limit`, {
+                method: 'PUT',
+                body: JSON.stringify({ limit }),
+            });
+            return { success: true };
+        } catch (error) {
+            logger.error('Error setting history limit:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:add-turn', async (_event, { sessionId, turn }) => {
+        if (!sessionId || !turn) {
+            return { success: false, error: 'sessionId and turn payload are required' };
+        }
+
+        try {
+            await fetchJson(`${API_BASE}/history/${sessionId}/turn`, {
+                method: 'POST',
+                body: JSON.stringify(turn),
+            });
+            return { success: true };
+        } catch (error) {
+            logger.error('Error appending history turn:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('assistant:ask', async (_event, prompt) => {
+        if (!prompt) {
+            return { success: false, error: 'Prompt is required' };
+        }
+
+        try {
+            const data = await fetchJson(`${API_BASE}/ask`, {
+                method: 'POST',
+                body: JSON.stringify({ prompt }),
+            });
+            return { success: true, data };
+        } catch (error) {
+            logger.error('Error requesting assistant reply:', error);
             return { success: false, error: error.message };
         }
     });
