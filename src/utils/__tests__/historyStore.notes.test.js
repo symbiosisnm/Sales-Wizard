@@ -20,25 +20,37 @@ test('Starting a session with sessionStart: true', () => {
     const session = historyStore.getSession(sessionId);
     assert.ok(session);
     assert.deepStrictEqual(session.conversationHistory, []);
+    assert.deepStrictEqual(session.notes, []);
+    assert.strictEqual(session.manualNotes, '');
 });
 
-test('Updating notes independently', () => {
+test('Updating structured notes independently', () => {
     const sessionId = 'notes-update';
     historyStore.appendTurn(sessionId, { sessionStart: true });
-    historyStore.appendTurn(sessionId, { notes: 'First note' });
+    historyStore.appendTurn(sessionId, {
+        notes: [
+            { text: 'Auto summary', type: 'auto', timestamp: 123 },
+            { text: 'Manual insight', type: 'manual', timestamp: 456 },
+        ],
+    });
     let session = historyStore.getSession(sessionId);
-    assert.strictEqual(session.notes, 'First note');
-    historyStore.appendTurn(sessionId, { notes: 'Updated note' });
+    assert.strictEqual(session.notes.length, 2);
+    assert.strictEqual(session.notes[0].text, 'Auto summary');
+    assert.strictEqual(session.manualNotes, '');
+    historyStore.appendTurn(sessionId, { notes: [] });
     session = historyStore.getSession(sessionId);
-    assert.strictEqual(session.notes, 'Updated note');
+    assert.deepStrictEqual(session.notes, []);
     assert.strictEqual(session.conversationHistory.length, 0);
 });
 
-test('getSession returns the latest notes', () => {
-    const sessionId = 'latest-notes';
+test('Legacy string notes update manual notes field', () => {
+    const sessionId = 'legacy-notes';
     historyStore.appendTurn(sessionId, { sessionStart: true });
     historyStore.appendTurn(sessionId, { notes: 'Old note' });
-    historyStore.appendTurn(sessionId, { notes: 'New note' });
-    const session = historyStore.getSession(sessionId);
-    assert.strictEqual(session.notes, 'New note');
+    let session = historyStore.getSession(sessionId);
+    assert.strictEqual(session.manualNotes, 'Old note');
+    assert.deepStrictEqual(session.notes, []);
+    historyStore.appendTurn(sessionId, { manualNotes: 'New note' });
+    session = historyStore.getSession(sessionId);
+    assert.strictEqual(session.manualNotes, 'New note');
 });

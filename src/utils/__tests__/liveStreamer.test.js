@@ -61,12 +61,19 @@ test('screen track end stops interval and notifies status', async () => {
 
   assert.strictEqual(clearIntervalMock.mock.callCount(), 1);
   assert.deepStrictEqual(clearIntervalMock.mock.calls[0].arguments, [123]);
-  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Screen capture ended']);
+  const screenStatuses = onStatus.mock.calls
+    .map(call => call.arguments[0])
+    .filter(arg => arg && typeof arg === 'object' && 'screen' in arg);
+  assert.ok(screenStatuses.length >= 1);
+  assert.deepStrictEqual(screenStatuses.at(-1), { screen: 'idle', message: 'Screen capture ended' });
 
   // Calling returned cleanup should not throw and should not double clear interval
   stopFn();
   assert.strictEqual(clearIntervalMock.mock.callCount(), 1);
-  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Screen capture ended']);
+  const finalScreenStatuses = onStatus.mock.calls
+    .map(call => call.arguments[0])
+    .filter(arg => arg && typeof arg === 'object' && 'screen' in arg);
+  assert.deepStrictEqual(finalScreenStatuses.at(-1), { screen: 'idle', message: 'Screen capture ended' });
 
   restoreTimers(origTimers);
 });
@@ -94,7 +101,10 @@ test('getDisplayMedia denial triggers onError', async () => {
   assert.ok(onError.mock.callCount() >= 1);
   assert.match(onError.mock.calls[0].arguments[0], /blocked or denied/);
   assert.ok(onStatus.mock.callCount() >= 1);
-  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Screen capture ended']);
+  const statusPayloads = onStatus.mock.calls.map(call => call.arguments[0]);
+  assert.ok(statusPayloads.some(payload => payload?.screen === 'error'));
+  const finalStatus = statusPayloads.filter(payload => payload?.screen).at(-1);
+  assert.deepStrictEqual(finalStatus, { screen: 'idle', message: 'Screen capture ended' });
 
   restoreTimers(origTimers);
 });
