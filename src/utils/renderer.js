@@ -17,8 +17,6 @@ window.electron?.getRandomDisplayName?.()
 
 let mediaStream = null;
 let screenCapturer = null;
-let audioContext = null;
-let audioProcessor = null;
 let micAudioProcessor = null;
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
@@ -39,6 +37,27 @@ let micEnabled = false;
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
+
+const SYSTEM_AUDIO_SETTING_KEY = 'enableSystemAudio';
+const MICROPHONE_AUDIO_SETTING_KEY = 'enableMicrophoneAudio';
+
+function getBooleanPreference(key, defaultValue) {
+    try {
+        const stored = localStorage.getItem(key);
+        if (stored === null) return defaultValue;
+        return stored === 'true';
+    } catch (_err) {
+        return defaultValue;
+    }
+}
+
+function isSystemAudioEnabled() {
+    return getBooleanPreference(SYSTEM_AUDIO_SETTING_KEY, true);
+}
+
+function isMicrophoneAudioEnabled() {
+    return getBooleanPreference(MICROPHONE_AUDIO_SETTING_KEY, true);
+}
 
 // Periodically fetch cursor location from main process
 function startCursorTracking() {
@@ -263,109 +282,126 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 
     try {
+        const systemAudioPreferred = isSystemAudioEnabled();
+        const microphonePreferred = isMicrophoneAudioEnabled();
+
         if (isMacOS) {
-            // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             logger.info('Starting macOS capture with SystemAudioDump...');
 
-            // Start macOS audio capture
-            const audioResult = await window.electron?.startMacosAudio?.();
-            if (!audioResult.success) {
-                throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
+            if (systemAudioPreferred) {
+                const audioResult = await window.electron?.startSystemAudio?.();
+                if (!audioResult?.success) {
+                    throw new Error('Failed to start macOS audio capture: ' + (audioResult?.error || 'Unknown error'));
+                }
+            } else {
+                await window.electron?.stopSystemAudio?.();
             }
 
-            // Get screen capture for screenshots
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
                 video: {
                     frameRate: 1,
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
                 },
-                audio: false, // Don't use browser audio on macOS
+                audio: false,
             });
 
-            logger.info('macOS screen capture started - audio handled by SystemAudioDump');
+            logger.info('macOS screen capture started - system audio enabled:', systemAudioPreferred);
         } else if (isLinux) {
-            // Linux - use display media for screen capture and try to get system audio
-            try {
-                // First try to get system audio via getDisplayMedia (works on newer browsers)
-                mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        frameRate: 1,
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                    },
-                    audio: {
-                        sampleRate: SAMPLE_RATE,
-                        channelCount: 1,
-                        echoCancellation: false, // Don't cancel system audio
-                        noiseSuppression: false,
-                        autoGainControl: false,
-                    },
-                });
-
-                logger.info('Linux system audio capture via getDisplayMedia succeeded');
-
-                // Setup audio processing for Linux system audio
-                await setupLinuxSystemAudioProcessing();
-            } catch (systemAudioError) {
-                logger.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
-
-                // Fallback to screen-only capture
-                mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        frameRate: 1,
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                    },
-                    audio: false,
-                });
-            }
-
-            // Additionally get microphone input for Linux
-            let micStream = null;
-            try {
-                micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        sampleRate: SAMPLE_RATE,
-                        channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                    video: false,
-                });
-
-                logger.info('Linux microphone capture started');
-
-                // Setup audio processing for microphone on Linux
-                await setupLinuxMicProcessing(micStream);
-            } catch (micError) {
-                logger.warn('Failed to get microphone access on Linux:', micError);
-                // Continue without microphone if permission denied
-            }
-
-            logger.info('Linux capture started - system audio:', mediaStream.getAudioTracks().length > 0, 'microphone:', micStream !== null);
-        } else {
-            // Windows - use display media with loopback for system audio
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
                 video: {
                     frameRate: 1,
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
                 },
-                audio: {
-                    sampleRate: SAMPLE_RATE,
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
+                audio: false,
             });
 
-            logger.info('Windows capture started with loopback audio');
+            if (systemAudioPreferred) {
+                let backendPreference = null;
+                try {
+                    backendPreference = localStorage.getItem('linuxAudioBackend');
+                } catch (_err) {
+                    backendPreference = null;
+                }
 
-            // Setup audio processing for Windows loopback audio only
-            await setupWindowsLoopbackProcessing();
+                const audioResult = await window.electron?.startSystemAudio?.({
+                    backend: backendPreference || undefined,
+                });
+                if (!audioResult?.success) {
+                    logger.warn('Failed to start Linux system audio capture via ffmpeg:', audioResult?.error);
+                } else {
+                    logger.info('Linux system audio capture started via ffmpeg (backend:', backendPreference || 'auto', ')');
+                }
+            } else {
+                await window.electron?.stopSystemAudio?.();
+            }
+
+            let micStream = null;
+            if (microphonePreferred) {
+                try {
+                    micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: SAMPLE_RATE,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                        video: false,
+                    });
+
+                    logger.info('Linux microphone capture started');
+
+                    await setupMicrophoneProcessing(micStream);
+                } catch (micError) {
+                    logger.warn('Failed to get microphone access on Linux:', micError);
+                }
+            }
+
+            logger.info('Linux capture started - system audio enabled:', systemAudioPreferred, 'microphone enabled:', microphonePreferred && !!micStream);
+        } else {
+            mediaStream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    frameRate: 1,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                },
+                audio: false,
+            });
+
+            if (systemAudioPreferred) {
+                const audioResult = await window.electron?.startSystemAudio?.();
+                if (!audioResult?.success) {
+                    logger.warn('Failed to start Windows system audio capture via ffmpeg:', audioResult?.error);
+                } else {
+                    logger.info('Windows system audio capture started via ffmpeg');
+                }
+            } else {
+                await window.electron?.stopSystemAudio?.();
+            }
+
+            if (microphonePreferred) {
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: SAMPLE_RATE,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                        video: false,
+                    });
+
+                    await setupMicrophoneProcessing(micStream);
+                    logger.info('Windows microphone capture started');
+                } catch (micError) {
+                    logger.warn('Failed to start Windows microphone capture:', micError);
+                }
+            }
+
+            logger.info('Windows capture started - system audio enabled:', systemAudioPreferred, 'microphone enabled:', microphonePreferred);
         }
 
         logger.info('MediaStream obtained:', {
@@ -405,8 +441,8 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 }
 
-async function setupLinuxMicProcessing(micStream) {
-    // Setup microphone audio processing for Linux
+async function setupMicrophoneProcessing(micStream) {
+    // Setup microphone audio processing using Web Audio APIs
     const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const micSource = micAudioContext.createMediaStreamSource(micStream);
 
@@ -449,96 +485,6 @@ async function setupLinuxMicProcessing(micStream) {
     micSource.connect(micProcessor);
     micProcessor.connect(micAudioContext.destination);
     micAudioProcessor = micProcessor;
-}
-
-async function setupLinuxSystemAudioProcessing() {
-    // Setup system audio processing for Linux (from getDisplayMedia)
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const source = audioContext.createMediaStreamSource(mediaStream);
-
-    const node = await createPcmWorkletNode(audioContext, async bytes => {
-        const base64Data = arrayBufferToBase64(bytes.buffer);
-        await window.electron?.sendAudioContent?.({
-            data: base64Data,
-            mimeType: 'audio/pcm;rate=24000',
-        });
-    });
-
-    if (node) {
-        source.connect(node);
-        node.connect(audioContext.destination);
-        audioProcessor = node;
-        return;
-    }
-
-    // Fallback to ScriptProcessor
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await window.electron?.sendAudioContent?.({
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
-    };
-
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
-}
-
-async function setupWindowsLoopbackProcessing() {
-    // Setup audio processing for Windows loopback audio only
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const source = audioContext.createMediaStreamSource(mediaStream);
-
-    const node = await createPcmWorkletNode(audioContext, async bytes => {
-        const base64Data = arrayBufferToBase64(bytes.buffer);
-        await window.electron?.sendAudioContent?.({
-            data: base64Data,
-            mimeType: 'audio/pcm;rate=24000',
-        });
-    });
-
-    if (node) {
-        source.connect(node);
-        node.connect(audioContext.destination);
-        audioProcessor = node;
-        return;
-    }
-
-    // Fallback to ScriptProcessor
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await window.electron?.sendAudioContent?.({
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
-    };
-
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
 }
 
 // Optional microphone streaming controlled by shortcut
@@ -804,11 +750,6 @@ function stopCapture() {
         screenCapturer = null;
     }
 
-    if (audioProcessor) {
-        audioProcessor.disconnect();
-        audioProcessor = null;
-    }
-
     // Clean up microphone audio processor (Linux only)
     if (micAudioProcessor) {
         micAudioProcessor.disconnect();
@@ -818,22 +759,15 @@ function stopCapture() {
     // Stop optional mic streaming
     disableMicStreaming();
 
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-    }
-
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
     }
 
-    // Stop macOS audio capture if running
-    if (isMacOS) {
-        window.electron?.stopMacosAudio?.().catch(err => {
-            logger.error('Error stopping macOS audio:', err);
-        });
-    }
+    // Stop system audio capture if running
+    window.electron?.stopSystemAudio?.().catch(err => {
+        logger.error('Error stopping system audio:', err);
+    });
 
     // Clean up hidden elements
     if (hiddenVideo) {

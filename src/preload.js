@@ -9,6 +9,8 @@ const api = {
     ipcRenderer.invoke('initialize-gemini', apiKey, prompt, profile, language),
   startMacosAudio: () => ipcRenderer.invoke('start-macos-audio'),
   stopMacosAudio: () => ipcRenderer.invoke('stop-macos-audio'),
+  startSystemAudio: options => ipcRenderer.invoke('start-system-audio', options),
+  stopSystemAudio: () => ipcRenderer.invoke('stop-system-audio'),
   sendImageContent: payload => ipcRenderer.invoke('send-image-content', payload),
   sendAudioContent: payload => ipcRenderer.invoke('send-audio-content', payload),
   sendTextMessage: text => ipcRenderer.invoke('send-text-message', text),

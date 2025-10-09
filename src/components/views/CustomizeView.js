@@ -420,6 +420,8 @@ export class CustomizeView extends LitElement {
         onAdvancedModeChange: { type: Function },
         screenshotRegionMode: { type: String },
         enableTTS: { type: Boolean },
+        systemAudioEnabled: { type: Boolean },
+        microphoneAudioEnabled: { type: Boolean },
     };
 
     constructor() {
@@ -452,6 +454,20 @@ export class CustomizeView extends LitElement {
         // Screenshot region mode and TTS defaults
         this.screenshotRegionMode = 'full';
         this.enableTTS = false;
+
+        try {
+            const systemAudioStored = localStorage.getItem('enableSystemAudio');
+            this.systemAudioEnabled = systemAudioStored === null ? true : systemAudioStored === 'true';
+        } catch (_err) {
+            this.systemAudioEnabled = true;
+        }
+
+        try {
+            const micAudioStored = localStorage.getItem('enableMicrophoneAudio');
+            this.microphoneAudioEnabled = micAudioStored === null ? true : micAudioStored === 'true';
+        } catch (_err) {
+            this.microphoneAudioEnabled = true;
+        }
 
         // Context parameter defaults
         this.allowedSources = localStorage.getItem('contextAllowedSources') || '';
@@ -616,6 +632,36 @@ export class CustomizeView extends LitElement {
         this.layoutMode = e.target.value;
         localStorage.setItem('layoutMode', this.layoutMode);
         this.onLayoutModeChange(e.target.value);
+    }
+
+    handleSystemAudioToggle(e) {
+        const enabled = e.target.checked;
+        this.systemAudioEnabled = enabled;
+        try {
+            localStorage.setItem('enableSystemAudio', enabled ? 'true' : 'false');
+        } catch (_err) {
+            /* ignore */
+        }
+        window.dispatchEvent?.(
+            new CustomEvent('salesWizard-audio-preference-changed', {
+                detail: { systemAudioEnabled: enabled, microphoneAudioEnabled: this.microphoneAudioEnabled },
+            })
+        );
+    }
+
+    handleMicrophoneAudioToggle(e) {
+        const enabled = e.target.checked;
+        this.microphoneAudioEnabled = enabled;
+        try {
+            localStorage.setItem('enableMicrophoneAudio', enabled ? 'true' : 'false');
+        } catch (_err) {
+            /* ignore */
+        }
+        window.dispatchEvent?.(
+            new CustomEvent('salesWizard-audio-preference-changed', {
+                detail: { systemAudioEnabled: this.systemAudioEnabled, microphoneAudioEnabled: enabled },
+            })
+        );
     }
 
     handleCustomPromptInput(e) {
@@ -1060,6 +1106,36 @@ export class CustomizeView extends LitElement {
                                     )}
                                 </select>
                                 <div class="form-description">Language for speech recognition and AI responses</div>
+                            </div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Audio Sources</label>
+                            <div class="checkbox-group">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox-input"
+                                    id="capture-system-audio"
+                                    .checked=${this.systemAudioEnabled}
+                                    @change=${this.handleSystemAudioToggle}
+                                />
+                                <label for="capture-system-audio" class="checkbox-label"> Capture system audio </label>
+                            </div>
+                            <div class="form-description">
+                                Streams application sound using platform-specific pipelines (SystemAudioDump on macOS, ffmpeg on
+                                Windows/Linux)
+                            </div>
+                            <div class="checkbox-group" style="margin-top: 8px;">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox-input"
+                                    id="capture-microphone-audio"
+                                    .checked=${this.microphoneAudioEnabled}
+                                    @change=${this.handleMicrophoneAudioToggle}
+                                />
+                                <label for="capture-microphone-audio" class="checkbox-label"> Capture microphone audio </label>
+                            </div>
+                            <div class="form-description">
+                                Streams microphone input for live assistance and voice-driven prompts
                             </div>
                         </div>
                     </div>
