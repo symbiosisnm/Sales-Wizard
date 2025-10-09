@@ -1,5 +1,12 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
-import { getAppName } from '../../utils/config.js';
+import {
+    DEFAULT_APP_NAME,
+    fetchAppName,
+    subscribeToAppNameUpdates,
+    computeHeaderTitle,
+    normalizeAppName,
+    getElectronApi,
+} from '../../utils/appName.js';
 import './AudioLevelIndicator.js';
 
 export class AppHeader extends LitElement {
@@ -51,6 +58,69 @@ export class AppHeader extends LitElement {
         .header-actions span {
             font-size: var(--header-font-size-small);
             color: var(--header-actions-color);
+        }
+
+        .status-indicators {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--status-indicator-background, rgba(255, 255, 255, 0.05));
+            border: 1px solid var(--status-indicator-border, rgba(255, 255, 255, 0.08));
+            color: var(--header-actions-color);
+            transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+            -webkit-app-region: no-drag;
+        }
+
+        .status-indicator svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .status-indicator.connected,
+        .status-indicator.capturing,
+        .status-indicator.sharing {
+            color: var(--status-indicator-success, #34d399);
+            border-color: rgba(52, 211, 153, 0.4);
+            background: rgba(52, 211, 153, 0.08);
+        }
+
+        .status-indicator.connecting {
+            color: var(--status-indicator-warning, #facc15);
+            border-color: rgba(250, 204, 21, 0.4);
+            background: rgba(250, 204, 21, 0.08);
+        }
+
+        .status-indicator.error {
+            color: var(--status-indicator-error, #f87171);
+            border-color: rgba(248, 113, 113, 0.4);
+            background: rgba(248, 113, 113, 0.08);
+        }
+
+        .status-indicator.idle,
+        .status-indicator.disconnected,
+        .status-indicator.unknown {
+            color: var(--status-indicator-idle, rgba(255, 255, 255, 0.6));
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
         .button {
@@ -122,6 +192,12 @@ export class AppHeader extends LitElement {
         onAdvancedClick: { type: Function },
         appName: { type: String },
         audioLevel: { type: Number },
+        connectionState: { type: String },
+        audioState: { type: String },
+        screenState: { type: String },
+        connectionMessage: { type: String },
+        audioMessage: { type: String },
+        screenMessage: { type: String },
     };
 
     constructor() {
@@ -138,22 +214,24 @@ export class AppHeader extends LitElement {
         this.isClickThrough = false;
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
-        this.appName = getAppName();
+        this.appName = DEFAULT_APP_NAME;
         this._timerInterval = null;
         this.audioLevel = 0;
-        this._appNameInterval = null;
+        this._removeAppNameListener = null;
+        this._pendingAppNameRequest = Promise.resolve(this.appName);
     }
 
     connectedCallback() {
         super.connectedCallback();
         this._startTimer();
-        this._startAppNameWatcher();
+        this._subscribeToAppNameUpdates();
+        this._requestAppName();
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
         this._stopTimer();
-        this._stopAppNameWatcher();
+        this._unsubscribeFromAppNameUpdates();
     }
 
     updated(changedProperties) {
@@ -198,34 +276,41 @@ export class AppHeader extends LitElement {
         }
     }
 
-    _startAppNameWatcher() {
-        this._stopAppNameWatcher();
-        this._appNameInterval = setInterval(() => {
-            const name = getAppName();
-            if (name !== this.appName) {
-                this.appName = name;
-            }
-        }, 1000);
+    _applyAppName(name) {
+        const normalizedName = normalizeAppName(name, DEFAULT_APP_NAME);
+        if (normalizedName !== this.appName) {
+            this.appName = normalizedName;
+        }
+        return this.appName;
     }
 
-    _stopAppNameWatcher() {
-        if (this._appNameInterval) {
-            clearInterval(this._appNameInterval);
-            this._appNameInterval = null;
+    _requestAppName() {
+        const electronApi = getElectronApi();
+        this._pendingAppNameRequest = fetchAppName(electronApi, this.appName)
+            .then(resolvedName => this._applyAppName(resolvedName))
+            .catch(() => this._applyAppName(DEFAULT_APP_NAME));
+    }
+
+    _subscribeToAppNameUpdates() {
+        const electronApi = getElectronApi();
+        this._unsubscribeFromAppNameUpdates();
+        this._removeAppNameListener = subscribeToAppNameUpdates(electronApi, name => this._applyAppName(name), this.appName);
+    }
+
+    _unsubscribeFromAppNameUpdates() {
+        if (this._removeAppNameListener) {
+            try {
+                this._removeAppNameListener();
+            } catch (_error) {
+                // cleanup best effort only
+            }
         }
+
+        this._removeAppNameListener = null;
     }
 
     getViewTitle() {
-        const titles = {
-            onboarding: `Welcome to ${this.appName}`,
-            main: this.appName,
-            customize: 'Customize',
-            help: 'Help & Shortcuts',
-            history: 'Conversation History',
-            advanced: 'Advanced Tools',
-            assistant: this.appName,
-        };
-        return titles[this.currentView] || this.appName;
+        return computeHeaderTitle(this.currentView, this.appName, DEFAULT_APP_NAME);
     }
 
     getElapsedTime() {
@@ -251,7 +336,10 @@ export class AppHeader extends LitElement {
                     ${this.currentView === 'assistant'
                         ? html`
                               <span>${elapsedTime}</span>
-                              <span>${this.statusText}</span>
+                              ${this.renderStatusIndicators()}
+                              ${this.statusText
+                                  ? html`<span class="sr-only" aria-live="polite">${this.statusText}</span>`
+                                  : ''}
                           `
                         : ''}
                     ${this.currentView === 'main'
@@ -453,6 +541,112 @@ export class AppHeader extends LitElement {
                 </div>
             </div>
         `;
+    }
+
+    renderStatusIndicators() {
+        const indicators = [
+            {
+                type: 'connection',
+                state: this.connectionState,
+                message: this.connectionMessage,
+            },
+            {
+                type: 'audio',
+                state: this.audioState,
+                message: this.audioMessage,
+            },
+            {
+                type: 'screen',
+                state: this.screenState,
+                message: this.screenMessage,
+            },
+        ];
+
+        return html`
+            <div class="status-indicators" role="group" aria-label="Streaming status">
+                ${indicators.map(config => this.renderIndicator(config))}
+            </div>
+        `;
+    }
+
+    renderIndicator({ type, state, message }) {
+        const normalizedState = state || 'unknown';
+        const label = this.getIndicatorLabel(type);
+        const stateLabel = this.getIndicatorStateLabel(type, normalizedState);
+        const tooltip = message || `${label}: ${stateLabel}`;
+        return html`
+            <div
+                class="status-indicator ${normalizedState}"
+                data-indicator=${type}
+                data-state=${normalizedState}
+                title=${tooltip}
+                role="status"
+                aria-label="${label}: ${stateLabel}"
+            >
+                ${this.renderIndicatorIcon(type)}
+            </div>
+        `;
+    }
+
+    getIndicatorLabel(type) {
+        const labels = {
+            connection: 'Connection',
+            audio: 'Microphone',
+            screen: 'Screen capture',
+        };
+        return labels[type] || type;
+    }
+
+    getIndicatorStateLabel(type, state) {
+        const stateLabels = {
+            connection: {
+                connected: 'Connected',
+                connecting: 'Connecting',
+                disconnected: 'Disconnected',
+                error: 'Error',
+                unknown: 'Unknown',
+            },
+            audio: {
+                capturing: 'Active',
+                idle: 'Idle',
+                error: 'Error',
+                unknown: 'Unknown',
+            },
+            screen: {
+                sharing: 'Sharing',
+                idle: 'Idle',
+                error: 'Error',
+                unknown: 'Unknown',
+            },
+        };
+        return stateLabels[type]?.[state] || stateLabels[type]?.unknown || state;
+    }
+
+    renderIndicatorIcon(type) {
+        switch (type) {
+            case 'connection':
+                return html`<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6.343 17.657a8 8 0 0 1 0-11.314"></path>
+                    <path d="M17.657 6.343a8 8 0 0 1 0 11.314"></path>
+                    <path d="M8.464 15.536a5 5 0 0 1 0-7.072"></path>
+                    <path d="M15.536 8.464a5 5 0 0 1 0 7.072"></path>
+                    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"></circle>
+                </svg>`;
+            case 'audio':
+                return html`<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <path d="M12 19v2"></path>
+                </svg>`;
+            case 'screen':
+                return html`<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="12" rx="2"></rect>
+                    <path d="M8 20h8"></path>
+                    <path d="M12 16v4"></path>
+                </svg>`;
+            default:
+                return html``;
+        }
     }
 }
 

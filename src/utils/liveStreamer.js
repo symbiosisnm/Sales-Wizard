@@ -5,6 +5,88 @@ import { generateNotesFromResponse } from './summarizer.js';
 // Fallback to console if the logger script fails to attach to globalThis
 const getLogger = () => globalThis.logger || defaultLogger || console;
 
+async function startElectronLiveStream({ onResponse, onStatus, onError }) {
+  const electronApi = typeof window !== 'undefined' ? window?.electron : undefined;
+  if (!electronApi || typeof electronApi.startLiveStream !== 'function') {
+    throw new Error('Electron live stream API unavailable');
+  }
+
+  onStatus('Initializing live stream...');
+
+  let cleanedUp = false;
+  let responseListener = null;
+  let statusListener = null;
+
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    try {
+      if (responseListener && typeof electronApi.removeUpdateResponseListener === 'function') {
+        electronApi.removeUpdateResponseListener(responseListener);
+      }
+    } catch (err) {
+      logger.warn('Failed to remove live response listener:', err);
+    }
+    try {
+      if (statusListener && typeof electronApi.removeUpdateStatusListener === 'function') {
+        electronApi.removeUpdateStatusListener(statusListener);
+      }
+    } catch (err) {
+      logger.warn('Failed to remove live status listener:', err);
+    }
+    responseListener = null;
+    statusListener = null;
+  };
+
+  if (typeof electronApi.onUpdateResponse === 'function') {
+    responseListener = (_event, payload) => {
+      try {
+        if (typeof payload === 'string' && payload.length > 0) {
+          onResponse(payload);
+        }
+      } catch (err) {
+        logger.warn('Error in live response callback:', err);
+      }
+    };
+    electronApi.onUpdateResponse(responseListener);
+  }
+
+  if (typeof electronApi.onUpdateStatus === 'function') {
+    statusListener = (_event, status) => {
+      try {
+        onStatus(status);
+        if (typeof status === 'string' && status.toLowerCase().includes('error')) {
+          onError(status);
+        }
+      } catch (err) {
+        logger.warn('Error in live status callback:', err);
+      }
+    };
+    electronApi.onUpdateStatus(statusListener);
+  }
+
+  try {
+    const result = await electronApi.startLiveStream();
+    if (!result?.success) {
+      throw new Error(result?.error || 'Failed to start live stream');
+    }
+  } catch (error) {
+    const message = error?.message || String(error);
+    onError(message);
+    cleanup();
+    throw error;
+  }
+
+  return () => {
+    cleanup();
+    if (typeof electronApi.stopLiveStream === 'function') {
+      Promise.resolve(electronApi.stopLiveStream()).catch(err => {
+        logger.warn('Error stopping live stream via IPC:', err);
+      });
+    }
+  };
+}
+
 /**
  * Starts streaming microphone audio and screen captures to the backend
  * through {@link LLMClient}. Text responses from the model are forwarded to
@@ -12,7 +94,7 @@ const getLogger = () => globalThis.logger || defaultLogger || console;
  *
  * @param {Object} opts
  * @param {(text:string)=>void} opts.onResponse Called when model emits text
- * @param {(status:string)=>void} [opts.onStatus] Status updates from client
+ * @param {(status:object|string)=>void} [opts.onStatus] Status updates from client
  * @param {(err:string)=>void} [opts.onError] Error messages
  * @param {(level:number)=>void} [opts.onAudioLevel] Receives audio level 0-1
  * @returns {Promise<()=>void>} resolves to a stop function
@@ -24,6 +106,15 @@ export async function startLiveStreaming({
   onAudioLevel = () => {},
   onNote = () => {},
 }) {
+  const hasElectronIpc =
+    typeof window !== 'undefined' &&
+    window?.electron &&
+    typeof window.electron.startLiveStream === 'function';
+
+  if (hasElectronIpc) {
+    return startElectronLiveStream({ onResponse, onStatus, onError });
+  }
+
   const client = new LLMClient();
   const log = getLogger();
   let audioCleanup = () => {};
@@ -93,6 +184,7 @@ export async function startLiveStreaming({
   let audioStream;
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    onStatus({ audio: 'capturing', message: 'Microphone streaming' });
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
     const source = audioCtx.createMediaStreamSource(audioStream);
 
@@ -127,6 +219,7 @@ export async function startLiveStreaming({
         audioCleanup = () => {
           node.disconnect();
           cleanup();
+          onStatus({ audio: 'idle', message: 'Microphone idle' });
         };
       } catch (err) {
         console.warn('AudioWorklet init failed, falling back to ScriptProcessor:', err);
@@ -150,6 +243,7 @@ export async function startLiveStreaming({
         audioCleanup = () => {
           processor.disconnect();
           cleanup();
+          onStatus({ audio: 'idle', message: 'Microphone idle' });
         };
       }
     } else {
@@ -174,6 +268,7 @@ export async function startLiveStreaming({
       audioCleanup = () => {
         processor.disconnect();
         cleanup();
+        onStatus({ audio: 'idle', message: 'Microphone idle' });
       };
     }
   } catch (err) {
@@ -215,13 +310,14 @@ export async function startLiveStreaming({
       screenStream = null;
     }
     cleanupDomNodes();
-    onStatus('Screen capture ended');
+    onStatus({ screen: 'idle', message: 'Screen capture ended' });
   };
 
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const track = screenStream.getVideoTracks()[0];
     track.onended = stopScreenCapture;
+    onStatus({ screen: 'sharing', message: 'Screen capture active' });
     const imageCapture = typeof ImageCapture === 'function' ? new ImageCapture(track) : null;
 
     const encodeBlobAndSend = async blob => {

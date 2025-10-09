@@ -420,6 +420,8 @@ export class CustomizeView extends LitElement {
         onAdvancedModeChange: { type: Function },
         screenshotRegionMode: { type: String },
         enableTTS: { type: Boolean },
+        systemAudioEnabled: { type: Boolean },
+        microphoneAudioEnabled: { type: Boolean },
     };
 
     constructor() {
@@ -452,6 +454,20 @@ export class CustomizeView extends LitElement {
         // Screenshot region mode and TTS defaults
         this.screenshotRegionMode = 'full';
         this.enableTTS = false;
+
+        try {
+            const systemAudioStored = localStorage.getItem('enableSystemAudio');
+            this.systemAudioEnabled = systemAudioStored === null ? true : systemAudioStored === 'true';
+        } catch (_err) {
+            this.systemAudioEnabled = true;
+        }
+
+        try {
+            const micAudioStored = localStorage.getItem('enableMicrophoneAudio');
+            this.microphoneAudioEnabled = micAudioStored === null ? true : micAudioStored === 'true';
+        } catch (_err) {
+            this.microphoneAudioEnabled = true;
+        }
 
         // Context parameter defaults
         this.allowedSources = localStorage.getItem('contextAllowedSources') || '';
@@ -573,7 +589,7 @@ export class CustomizeView extends LitElement {
 
     updateContextParams() {
         try {
-            window.electron?.setContextParams?.({
+            window.electron?.contextSet?.({
                 allowedSources: this.allowedSources,
                 toneLength: this.toneLength,
                 disallowedTopics: this.disallowedTopics,
@@ -618,6 +634,36 @@ export class CustomizeView extends LitElement {
         this.onLayoutModeChange(e.target.value);
     }
 
+    handleSystemAudioToggle(e) {
+        const enabled = e.target.checked;
+        this.systemAudioEnabled = enabled;
+        try {
+            localStorage.setItem('enableSystemAudio', enabled ? 'true' : 'false');
+        } catch (_err) {
+            /* ignore */
+        }
+        window.dispatchEvent?.(
+            new CustomEvent('salesWizard-audio-preference-changed', {
+                detail: { systemAudioEnabled: enabled, microphoneAudioEnabled: this.microphoneAudioEnabled },
+            })
+        );
+    }
+
+    handleMicrophoneAudioToggle(e) {
+        const enabled = e.target.checked;
+        this.microphoneAudioEnabled = enabled;
+        try {
+            localStorage.setItem('enableMicrophoneAudio', enabled ? 'true' : 'false');
+        } catch (_err) {
+            /* ignore */
+        }
+        window.dispatchEvent?.(
+            new CustomEvent('salesWizard-audio-preference-changed', {
+                detail: { systemAudioEnabled: this.systemAudioEnabled, microphoneAudioEnabled: enabled },
+            })
+        );
+    }
+
     handleCustomPromptInput(e) {
         localStorage.setItem('customPrompt', e.target.value);
     }
@@ -632,7 +678,6 @@ export class CustomizeView extends LitElement {
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-            panicHide: isMac ? 'Cmd+Esc' : 'Ctrl+Esc',
             toggleMic: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
@@ -646,6 +691,9 @@ export class CustomizeView extends LitElement {
         if (savedKeybinds) {
             try {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...JSON.parse(savedKeybinds) };
+                if (this.keybinds.panicHide) {
+                    delete this.keybinds.panicHide;
+                }
             } catch (e) {
                 logger.error('Failed to parse saved keybinds:', e);
                 this.keybinds = this.getDefaultKeybinds();
@@ -707,11 +755,6 @@ export class CustomizeView extends LitElement {
                 key: 'toggleClickThrough',
                 name: 'Toggle Click-through Mode',
                 description: 'Enable/disable click-through functionality',
-            },
-            {
-                key: 'panicHide',
-                name: 'Panic Hide',
-                description: 'Hide overlay and stop capture',
             },
             {
                 key: 'toggleMic',
@@ -1060,6 +1103,36 @@ export class CustomizeView extends LitElement {
                                     )}
                                 </select>
                                 <div class="form-description">Language for speech recognition and AI responses</div>
+                            </div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Audio Sources</label>
+                            <div class="checkbox-group">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox-input"
+                                    id="capture-system-audio"
+                                    .checked=${this.systemAudioEnabled}
+                                    @change=${this.handleSystemAudioToggle}
+                                />
+                                <label for="capture-system-audio" class="checkbox-label"> Capture system audio </label>
+                            </div>
+                            <div class="form-description">
+                                Streams application sound using platform-specific pipelines (SystemAudioDump on macOS, ffmpeg on
+                                Windows/Linux)
+                            </div>
+                            <div class="checkbox-group" style="margin-top: 8px;">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox-input"
+                                    id="capture-microphone-audio"
+                                    .checked=${this.microphoneAudioEnabled}
+                                    @change=${this.handleMicrophoneAudioToggle}
+                                />
+                                <label for="capture-microphone-audio" class="checkbox-label"> Capture microphone audio </label>
+                            </div>
+                            <div class="form-description">
+                                Streams microphone input for live assistance and voice-driven prompts
                             </div>
                         </div>
                     </div>

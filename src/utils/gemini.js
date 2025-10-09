@@ -4,6 +4,7 @@ const conversationStore = require('./conversationStore');
 const audioHandler = require('./audioHandler');
 const reconnection = require('./reconnection');
 const sessionManager = require('./sessionManager');
+const liveStreamManager = require('./liveStreamManager');
 
 function setupGeminiIpcHandlers(geminiSessionRef) {
     global.geminiSessionRef = geminiSessionRef;
@@ -30,6 +31,42 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    ipcMain.handle('start-live-stream', async (_event, options = {}) => {
+        try {
+            return liveStreamManager.startLiveStream(geminiSessionRef, options);
+        } catch (error) {
+            logger.error('Error starting live stream:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('stop-live-stream', async (_event, options = {}) => {
+        try {
+            return liveStreamManager.stopLiveStream(options);
+        } catch (error) {
+            logger.error('Error stopping live stream:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('live-send-audio', async (_event, payload = {}) => {
+        try {
+            return await liveStreamManager.sendLiveAudio(geminiSessionRef, payload);
+        } catch (error) {
+            logger.error('Error handling live audio payload:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('live-send-screen', async (_event, payload = {}) => {
+        try {
+            return await liveStreamManager.sendLiveScreen(geminiSessionRef, payload);
+        } catch (error) {
+            logger.error('Error handling live screen payload:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('send-image', async data => {
         return sessionManager.sendImage(geminiSessionRef, data);
     });
@@ -46,7 +83,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             };
         }
         try {
-            const success = await audioHandler.startMacOSAudioCapture(geminiSessionRef);
+            const success = await audioHandler.startSystemAudioCapture(geminiSessionRef);
             return { success };
         } catch (error) {
             logger.error('Error starting macOS audio capture:', error);
@@ -56,7 +93,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('stop-macos-audio', async () => {
         try {
-            audioHandler.stopMacOSAudioCapture();
+            audioHandler.stopSystemAudioCapture();
             return { success: true };
         } catch (error) {
             logger.error('Error stopping macOS audio capture:', error);
@@ -64,9 +101,29 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    ipcMain.handle('start-system-audio', async (_, options = {}) => {
+        try {
+            const success = await audioHandler.startSystemAudioCapture(geminiSessionRef, options);
+            return { success };
+        } catch (error) {
+            logger.error('Error starting system audio capture:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('stop-system-audio', async () => {
+        try {
+            audioHandler.stopSystemAudioCapture();
+            return { success: true };
+        } catch (error) {
+            logger.error('Error stopping system audio capture:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('close-session', async () => {
         try {
-            audioHandler.stopMacOSAudioCapture();
+            audioHandler.stopSystemAudioCapture();
             reconnection.clearSessionParams();
             if (geminiSessionRef.current) {
                 await geminiSessionRef.current.close();
@@ -123,11 +180,93 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('history:list', async () => {
+        try {
+            const data = await fetchJson(`${API_BASE}/history`);
+            return { success: true, data: Array.isArray(data) ? data : [] };
+        } catch (error) {
+            logger.error('Error listing history sessions:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:get', async (_event, sessionId) => {
+        if (!sessionId) {
+            return { success: false, error: 'Session ID is required' };
+        }
+
+        try {
+            const data = await fetchJson(`${API_BASE}/history/${sessionId}`);
+            return { success: true, data };
+        } catch (error) {
+            logger.error('Error retrieving history session:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:clear', async () => {
+        try {
+            await fetchJson(`${API_BASE}/history`, { method: 'DELETE' });
+            return { success: true };
+        } catch (error) {
+            logger.error('Error clearing history:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:set-limit', async (_event, limit) => {
+        try {
+            await fetchJson(`${API_BASE}/history/limit`, {
+                method: 'PUT',
+                body: JSON.stringify({ limit }),
+            });
+            return { success: true };
+        } catch (error) {
+            logger.error('Error setting history limit:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('history:add-turn', async (_event, { sessionId, turn }) => {
+        if (!sessionId || !turn) {
+            return { success: false, error: 'sessionId and turn payload are required' };
+        }
+
+        try {
+            await fetchJson(`${API_BASE}/history/${sessionId}/turn`, {
+                method: 'POST',
+                body: JSON.stringify(turn),
+            });
+            return { success: true };
+        } catch (error) {
+            logger.error('Error appending history turn:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('assistant:ask', async (_event, prompt) => {
+        if (!prompt) {
+            return { success: false, error: 'Prompt is required' };
+        }
+
+        try {
+            const data = await fetchJson(`${API_BASE}/ask`, {
+                method: 'POST',
+                body: JSON.stringify({ prompt }),
+            });
+            return { success: true, data };
+        } catch (error) {
+            logger.error('Error requesting assistant reply:', error);
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 module.exports = {
     setupGeminiIpcHandlers,
-    stopMacOSAudioCapture: audioHandler.stopMacOSAudioCapture,
+    stopSystemAudioCapture: audioHandler.stopSystemAudioCapture,
+    startSystemAudioCapture: audioHandler.startSystemAudioCapture,
     sendToRenderer,
     initializeGeminiSession: sessionManager.initializeGeminiSession,
     getEnabledTools: sessionManager.getEnabledTools,
@@ -137,8 +276,6 @@ module.exports = {
     getCurrentSessionData: conversationStore.getCurrentSessionData,
     sendReconnectionContext: reconnection.sendReconnectionContext,
     killExistingSystemAudioDump: audioHandler.killExistingSystemAudioDump,
-    startMacOSAudioCapture: audioHandler.startMacOSAudioCapture,
-    convertStereoToMono: audioHandler.convertStereoToMono,
     sendAudioToGemini: audioHandler.sendAudioToGemini,
     attemptReconnection: reconnection.attemptReconnection,
 };
