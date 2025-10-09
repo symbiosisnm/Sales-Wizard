@@ -9,22 +9,35 @@ const api = {
     ipcRenderer.invoke('initialize-gemini', apiKey, prompt, profile, language),
   startMacosAudio: () => ipcRenderer.invoke('start-macos-audio'),
   stopMacosAudio: () => ipcRenderer.invoke('stop-macos-audio'),
-  sendImageContent: payload => ipcRenderer.invoke('send-image-content', payload),
-  sendAudioContent: payload => ipcRenderer.invoke('send-audio-content', payload),
+  sendImageContent: payload => ipcRenderer.invoke('live-send-screen', payload),
+  sendAudioContent: payload => ipcRenderer.invoke('live-send-audio', payload),
   sendTextMessage: text => ipcRenderer.invoke('send-text-message', text),
+  startLiveStream: options => ipcRenderer.invoke('start-live-stream', options),
+  stopLiveStream: options => ipcRenderer.invoke('stop-live-stream', options),
+  liveSendAudio: payload => ipcRenderer.invoke('live-send-audio', payload),
+  liveSendScreen: payload => ipcRenderer.invoke('live-send-screen', payload),
   closeSession: () => ipcRenderer.invoke('close-session'),
   quitApplication: () => ipcRenderer.invoke('quit-application'),
   toggleWindowVisibility: () => ipcRenderer.invoke('toggle-window-visibility'),
   openExternal: url => ipcRenderer.invoke('open-external', url),
   viewChanged: view => ipcRenderer.send('view-changed', view),
   updateKeybinds: keybinds => ipcRenderer.send('update-keybinds', keybinds),
-  setContextParams: params => ipcRenderer.invoke('set-context-params', params),
+  contextGet: () => ipcRenderer.invoke('context:get'),
+  contextSet: params => ipcRenderer.invoke('context:set', params),
   updateGoogleSearchSetting: enabled =>
     ipcRenderer.invoke('update-google-search-setting', enabled),
   updateContentProtection: enabled =>
     ipcRenderer.invoke('update-content-protection', enabled),
+  getContentProtection: () => ipcRenderer.invoke('get-content-protection'),
   getRandomDisplayName: () => ipcRenderer.invoke('get-random-display-name'),
+  getAppName: () => ipcRenderer.invoke('get-app-name'),
   exportSession: options => ipcRenderer.invoke('export-session', options),
+  historyList: () => ipcRenderer.invoke('history:list'),
+  historyGet: sessionId => ipcRenderer.invoke('history:get', sessionId),
+  historyClear: () => ipcRenderer.invoke('history:clear'),
+  historySetLimit: limit => ipcRenderer.invoke('history:set-limit', limit),
+  historyAddTurn: payload => ipcRenderer.invoke('history:add-turn', payload),
+  assistantAsk: prompt => ipcRenderer.invoke('assistant:ask', prompt),
   onUpdateResponse: handler => ipcRenderer.on('update-response', handler),
   removeUpdateResponseListener: handler =>
     ipcRenderer.removeListener('update-response', handler),
@@ -57,7 +70,10 @@ const api = {
   onSaveConversationTurn: handler =>
     ipcRenderer.on('save-conversation-turn', handler),
   removeSaveConversationTurnListener: handler =>
-    ipcRenderer.removeListener('save-conversation-turn', handler)
+    ipcRenderer.removeListener('save-conversation-turn', handler),
+  onAppNameUpdated: handler => ipcRenderer.on('app-name-updated', handler),
+  removeAppNameUpdatedListener: handler =>
+    ipcRenderer.removeListener('app-name-updated', handler)
 };
 
 contextBridge.exposeInMainWorld('electron', api);

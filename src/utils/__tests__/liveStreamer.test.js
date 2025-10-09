@@ -8,9 +8,13 @@ global.WebSocket = class {
     setImmediate(() => this.onopen && this.onopen());
   }
   send() {}
-  close() { if (this.onclose) this.onclose(); }
+  close() {
+    this.readyState = global.WebSocket.CLOSED;
+    if (this.onclose) this.onclose();
+  }
 };
 global.WebSocket.OPEN = 1;
+global.WebSocket.CLOSED = 3;
 
 // Use real startLiveStreaming with stubbed WebSocket
 const { startLiveStreaming } = require('../liveStreamer');
@@ -21,6 +25,119 @@ function restoreTimers(orig) {
   global.setInterval = orig.setInterval;
   global.clearInterval = orig.clearInterval;
 }
+
+test('LLMClient emits error when socket is not open', () => {
+  global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn(), debug: mock.fn() };
+
+  const client = new LLMClient();
+  const errors = [];
+  client.onError = msg => errors.push(msg);
+
+  const sendMock = mock.fn();
+  client.ws = { readyState: global.WebSocket.CLOSED, send: sendMock };
+
+  client.sendText('hello');
+
+  assert.strictEqual(sendMock.mock.callCount(), 0, 'send should not be attempted when socket is closed');
+  assert.strictEqual(errors.length, 1, 'onError should be invoked once');
+  assert.match(errors[0], /state/i);
+  assert.match(errors[0], /hello/);
+  assert.ok(global.logger.warn.mock.callCount() >= 1, 'warning should be logged');
+});
+
+test('LLMClient surfaces send exceptions with payload context', () => {
+  global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn(), debug: mock.fn() };
+
+  const client = new LLMClient();
+  const errors = [];
+  client.onError = msg => errors.push(msg);
+
+  const sendMock = mock.fn(() => { throw new Error('boom'); });
+  client.ws = { readyState: global.WebSocket.OPEN, send: sendMock };
+
+  client.sendText('payload-check');
+
+  assert.strictEqual(sendMock.mock.callCount(), 1, 'send should be attempted once');
+  assert.strictEqual(errors.length, 1, 'onError should be invoked once');
+  assert.match(errors[0], /boom/);
+  assert.match(errors[0], /payload-check/);
+  assert.ok(global.logger.error.mock.callCount() >= 1, 'error should be logged');
+});
+
+test('startLiveStreaming propagates client send failure and stops streaming', async () => {
+  const origWebSocket = global.WebSocket;
+  const origOpen = global.WebSocket.OPEN;
+  const origClosed = global.WebSocket.CLOSED;
+  const origNavigator = global.navigator;
+  const origImageCapture = global.ImageCapture;
+  const origLogger = global.logger;
+  const origTimers = { setInterval, clearInterval };
+
+  global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn(), debug: mock.fn() };
+
+  class FailingWebSocket {
+    constructor() {
+      this.readyState = FailingWebSocket.OPEN;
+      setImmediate(() => this.onopen && this.onopen());
+    }
+    send() {
+      this.readyState = FailingWebSocket.CLOSED;
+      throw new Error('Simulated send failure');
+    }
+    close() {
+      this.readyState = FailingWebSocket.CLOSED;
+      if (this.onclose) this.onclose();
+    }
+  }
+  FailingWebSocket.OPEN = 1;
+  FailingWebSocket.CLOSED = 3;
+
+  global.WebSocket = FailingWebSocket;
+  global.WebSocket.OPEN = FailingWebSocket.OPEN;
+  global.WebSocket.CLOSED = FailingWebSocket.CLOSED;
+
+  const getDisplayMedia = mock.fn(async () => ({ getVideoTracks: () => [], getTracks: () => [] }));
+  global.navigator = {
+    mediaDevices: {
+      getUserMedia: mock.fn(async () => { throw new Error('no audio'); }),
+      getDisplayMedia,
+    },
+  };
+
+  global.ImageCapture = class { constructor() {} };
+
+  global.setInterval = mock.fn(() => 123);
+  global.clearInterval = mock.fn();
+
+  const onStatus = mock.fn();
+  const onError = mock.fn();
+
+  try {
+    const stopFn = await startLiveStreaming({ onResponse: () => {}, onStatus, onError });
+
+    assert.strictEqual(getDisplayMedia.mock.callCount(), 0, 'screen capture should not start after fatal error');
+    assert.ok(onError.mock.callCount() >= 1, 'onError should be triggered');
+    const errorMessage = onError.mock.calls[0].arguments[0];
+    assert.match(errorMessage, /WebSocket send failed/, 'error should mention send failure');
+
+    const statusMessages = onStatus.mock.calls.map(call => call.arguments[0]);
+    assert.ok(statusMessages.includes('WS open'), 'should report WS open status');
+    assert.ok(statusMessages.some(msg => /^Error: /.test(msg)), 'error status should be reported');
+    assert.strictEqual(statusMessages.at(-1), 'Screen capture ended', 'cleanup status should be emitted');
+
+    stopFn();
+
+    assert.ok(global.logger.error.mock.callCount() >= 1, 'logger should record the failure');
+  } finally {
+    global.WebSocket = origWebSocket;
+    global.WebSocket.OPEN = origOpen;
+    global.WebSocket.CLOSED = origClosed;
+    if (origNavigator === undefined) delete global.navigator; else global.navigator = origNavigator;
+    if (origImageCapture === undefined) delete global.ImageCapture; else global.ImageCapture = origImageCapture;
+    if (origLogger === undefined) delete global.logger; else global.logger = origLogger;
+    restoreTimers(origTimers);
+  }
+});
 
 test('screen track end stops interval and notifies status', async () => {
   global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn() };
@@ -61,12 +178,19 @@ test('screen track end stops interval and notifies status', async () => {
 
   assert.strictEqual(clearIntervalMock.mock.callCount(), 1);
   assert.deepStrictEqual(clearIntervalMock.mock.calls[0].arguments, [123]);
-  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Screen capture ended']);
+  const screenStatuses = onStatus.mock.calls
+    .map(call => call.arguments[0])
+    .filter(arg => arg && typeof arg === 'object' && 'screen' in arg);
+  assert.ok(screenStatuses.length >= 1);
+  assert.deepStrictEqual(screenStatuses.at(-1), { screen: 'idle', message: 'Screen capture ended' });
 
   // Calling returned cleanup should not throw and should not double clear interval
   stopFn();
   assert.strictEqual(clearIntervalMock.mock.callCount(), 1);
-  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Screen capture ended']);
+  const finalScreenStatuses = onStatus.mock.calls
+    .map(call => call.arguments[0])
+    .filter(arg => arg && typeof arg === 'object' && 'screen' in arg);
+  assert.deepStrictEqual(finalScreenStatuses.at(-1), { screen: 'idle', message: 'Screen capture ended' });
 
   restoreTimers(origTimers);
 });
@@ -94,7 +218,10 @@ test('getDisplayMedia denial triggers onError', async () => {
   assert.ok(onError.mock.callCount() >= 1);
   assert.match(onError.mock.calls[0].arguments[0], /blocked or denied/);
   assert.ok(onStatus.mock.callCount() >= 1);
-  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Screen capture ended']);
+  const statusPayloads = onStatus.mock.calls.map(call => call.arguments[0]);
+  assert.ok(statusPayloads.some(payload => payload?.screen === 'error'));
+  const finalStatus = statusPayloads.filter(payload => payload?.screen).at(-1);
+  assert.deepStrictEqual(finalStatus, { screen: 'idle', message: 'Screen capture ended' });
 
   restoreTimers(origTimers);
 });
@@ -327,5 +454,102 @@ test('canvas fallback draws frame and cleans up DOM nodes', async () => {
     global.document = origDocument;
     global.Blob = origBlob;
     if (origBtoa) global.btoa = origBtoa; else delete global.btoa;
+  }
+});
+
+test('electron IPC path wires callbacks and stops stream', async () => {
+  const origWindow = global.window;
+  const start = mock.fn(async () => ({ success: true }));
+  const stop = mock.fn(async () => ({ success: true }));
+  const removeResponse = mock.fn();
+  const removeStatus = mock.fn();
+  let responseHandler;
+  let statusHandler;
+
+  global.window = {
+    electron: {
+      startLiveStream: start,
+      stopLiveStream: stop,
+      onUpdateResponse: handler => {
+        responseHandler = handler;
+      },
+      onUpdateStatus: handler => {
+        statusHandler = handler;
+      },
+      removeUpdateResponseListener: handler => removeResponse(handler),
+      removeUpdateStatusListener: handler => removeStatus(handler),
+    },
+  };
+
+  const onResponse = mock.fn();
+  const onStatus = mock.fn();
+  const onError = mock.fn();
+
+  const stopFn = await startLiveStreaming({
+    onResponse,
+    onStatus,
+    onError,
+    onAudioLevel: () => {},
+    onNote: () => {},
+  });
+
+  assert.strictEqual(start.mock.callCount(), 1);
+  assert.deepStrictEqual(onStatus.mock.calls[0].arguments, ['Initializing live stream...']);
+
+  statusHandler({}, 'Listening...');
+  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Listening...']);
+
+  responseHandler({}, 'Hello world');
+  assert.deepStrictEqual(onResponse.mock.calls.at(-1).arguments, ['Hello world']);
+  assert.strictEqual(onError.mock.callCount(), 0);
+
+  stopFn();
+  assert.strictEqual(stop.mock.callCount(), 1);
+  assert.strictEqual(removeResponse.mock.callCount(), 1);
+  assert.strictEqual(removeStatus.mock.callCount(), 1);
+
+  if (typeof origWindow === 'undefined') {
+    delete global.window;
+  } else {
+    global.window = origWindow;
+  }
+});
+
+test('electron IPC path surfaces start errors', async () => {
+  const origWindow = global.window;
+  const start = mock.fn(async () => ({ success: false, error: 'no session' }));
+  const stop = mock.fn(async () => ({ success: true }));
+  const removeResponse = mock.fn();
+  const removeStatus = mock.fn();
+
+  global.window = {
+    electron: {
+      startLiveStream: start,
+      stopLiveStream: stop,
+      onUpdateResponse: () => {},
+      onUpdateStatus: () => {},
+      removeUpdateResponseListener: handler => removeResponse(handler),
+      removeUpdateStatusListener: handler => removeStatus(handler),
+    },
+  };
+
+  const onResponse = mock.fn();
+  const onStatus = mock.fn();
+  const onError = mock.fn();
+
+  await assert.rejects(
+    startLiveStreaming({ onResponse, onStatus, onError, onAudioLevel: () => {}, onNote: () => {} }),
+    /no session/
+  );
+
+  assert.strictEqual(onError.mock.callCount(), 1);
+  assert.strictEqual(stop.mock.callCount(), 0);
+  assert.strictEqual(removeResponse.mock.callCount(), 1);
+  assert.strictEqual(removeStatus.mock.callCount(), 1);
+
+  if (typeof origWindow === 'undefined') {
+    delete global.window;
+  } else {
+    global.window = origWindow;
   }
 });

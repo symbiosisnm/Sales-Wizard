@@ -12,7 +12,11 @@
     "make": "node -r dotenv/config node_modules/.bin/electron-forge make",
     "publish": "node -r dotenv/config node_modules/.bin/electron-forge publish",
     "lint": "eslint .",
-    "test": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
+    "test": "npm run test:backend && npm run test:renderer",
+    "test:backend": "jest --runInBand",
+    "test:renderer": "npm run test:renderer:node && npm run test:renderer:vitest",
+    "test:renderer:node": "node -r ./src/utils/logger.js --test src/utils/__tests__/*.test.js",
+    "test:renderer:vitest": "vitest run",
     "format": "prettier --write ."
   },
   "keywords": [
@@ -51,7 +55,10 @@
     "concurrently": "^8.2.2",
     "electron": "^30.0.5",
     "eslint": "^8.57.1",
+    "jest": "^29.7.0",
     "mock-fs": "^5.5.0",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "supertest": "^7.1.1",
+    "vitest": "^2.1.4"
   }
 }

@@ -4,14 +4,29 @@ const path = require('path');
 const { saveDebugAudio } = require('../audioUtils');
 const ipcUtils = require('./ipcUtils');
 
+const SAMPLE_RATE = 24000;
+const OUTPUT_CHANNELS = 1;
+const BYTES_PER_SAMPLE = 2;
+const CHUNK_DURATION_SECONDS = 0.1;
+
 let systemAudioProc = null;
 let vadSpeaking = false;
 let vadLastSendTs = 0;
+
 const VAD_THRESHOLD = 900;
 const VAD_HYSTERESIS = 200;
 const VAD_SILENCE_SEND_MS = 2500;
 
+function resetVadState() {
+    vadSpeaking = false;
+    vadLastSendTs = 0;
+}
+
 function killExistingSystemAudioDump() {
+    if (process.platform !== 'darwin') {
+        return Promise.resolve();
+    }
+
     return new Promise(resolve => {
         const killProc = childProcess.spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
         killProc.on('close', () => resolve());
@@ -23,16 +38,48 @@ function killExistingSystemAudioDump() {
     });
 }
 
+function resolveFfmpegPath() {
+    const override = process.env.SW_FFMPEG_PATH;
+    if (override && fs.existsSync(override)) {
+        return override;
+    }
+
+    const binaryName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+
+    try {
+        const { app } = require('electron');
+        if (app?.isPackaged) {
+            const packagedPath = path.join(process.resourcesPath, 'bin', process.platform, binaryName);
+            if (fs.existsSync(packagedPath)) {
+                return packagedPath;
+            }
+        }
+    } catch (_err) {
+        // Electron may not be available in tests; fall back to development paths below.
+    }
+
+    const devPath = path.join(__dirname, '../assets/bin', process.platform, binaryName);
+    if (fs.existsSync(devPath)) {
+        return devPath;
+    }
+
+    return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+}
+
 async function startMacOSAudioCapture(geminiSessionRef) {
     if (process.platform !== 'darwin') return false;
-    await killExistingSystemAudioDump();
 
     const { app } = require('electron');
 
     let systemAudioPath;
-    if (app.isPackaged) {
-        systemAudioPath = path.join(process.resourcesPath, 'SystemAudioDump');
-    } else {
+    try {
+        const { app } = require('electron');
+        if (app?.isPackaged) {
+            systemAudioPath = path.join(process.resourcesPath, 'SystemAudioDump');
+        } else {
+            systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
+        }
+    } catch (_err) {
         systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
     }
 
@@ -53,9 +100,45 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         env: { ...process.env, PROCESS_NAME: 'AudioService', APP_NAME: 'System Audio Service' },
     };
 
-    if (process.platform === 'darwin') {
-        spawnOptions.detached = false;
-        spawnOptions.windowsHide = false;
+async function startWindowsAudioCapture(geminiSessionRef) {
+    const ffmpegPath = resolveFfmpegPath();
+    const inputDevice = process.env.SW_WASAPI_DEVICE || 'default';
+    const args = [
+        '-f',
+        'wasapi',
+        '-i',
+        inputDevice,
+        '-ac',
+        '1',
+        '-ar',
+        String(SAMPLE_RATE),
+        '-f',
+        's16le',
+        'pipe:1',
+    ];
+
+    return spawnSystemAudioProcess(ffmpegPath, args, geminiSessionRef, {
+        label: 'ffmpeg-wasapi',
+        inputChannels: 1,
+    });
+}
+
+async function startLinuxAudioCapture(geminiSessionRef, options = {}) {
+    const ffmpegPath = resolveFfmpegPath();
+
+    const preferred = (options.backend || process.env.SW_LINUX_AUDIO_BACKEND || '').toLowerCase();
+    const defaultPulseSource = process.env.SW_PULSE_SOURCE || process.env.PULSE_SOURCE || 'default';
+    const defaultPipewireSource = process.env.SW_PIPEWIRE_SOURCE || 'default';
+
+    const order = [];
+    if (preferred === 'pulse' || preferred === 'pulseaudio') {
+        order.push('pulse', 'pipewire');
+    } else if (preferred === 'pipewire') {
+        order.push('pipewire', 'pulse');
+    } else if (process.env.XDG_SESSION_TYPE === 'wayland') {
+        order.push('pipewire', 'pulse');
+    } else {
+        order.push('pulse', 'pipewire');
     }
 
     try {
@@ -72,31 +155,128 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         return false;
     }
 
-    const CHUNK_DURATION = 0.1;
-    const SAMPLE_RATE = 24000;
-    const BYTES_PER_SAMPLE = 2;
-    const CHANNELS = 2;
-    const CHUNK_SIZE = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * CHUNK_DURATION;
+    if (process.platform === 'darwin') {
+        return startMacOSAudioCapture(geminiSessionRef);
+    }
+    if (process.platform === 'win32') {
+        return startWindowsAudioCapture(geminiSessionRef);
+    }
+    if (process.platform === 'linux') {
+        return startLinuxAudioCapture(geminiSessionRef, options);
+    }
 
-    let audioBuffer = Buffer.alloc(0);
+    logger.warn(`System audio capture is not supported on platform: ${process.platform}`);
+    return false;
+}
 
-    systemAudioProc.stdout.on('data', data => {
-        audioBuffer = Buffer.concat([audioBuffer, data]);
-        while (audioBuffer.length >= CHUNK_SIZE) {
-            const chunk = audioBuffer.slice(0, CHUNK_SIZE);
-            audioBuffer = audioBuffer.slice(CHUNK_SIZE);
-            const monoChunk = CHANNELS === 2 ? convertStereoToMono(chunk) : chunk;
-            const base64Data = monoChunk.toString('base64');
-            sendAudioToGemini(base64Data, geminiSessionRef);
-            if (process.env.DEBUG_AUDIO) {
-                saveDebugAudio(monoChunk, 'system_audio');
+function stopSystemAudioCapture() {
+    if (systemAudioProc) {
+        try {
+            systemAudioProc.kill('SIGTERM');
+        } catch (err) {
+            logger.warn('Failed to terminate system audio process gracefully, forcing kill', err);
+            try {
+                systemAudioProc.kill();
+            } catch (_killErr) {
+                // Ignore - process may already be stopped
             }
         }
-        const maxBufferSize = SAMPLE_RATE * BYTES_PER_SAMPLE * 1;
-        if (audioBuffer.length > maxBufferSize) {
-            audioBuffer = audioBuffer.slice(-maxBufferSize);
+        systemAudioProc = null;
+    }
+    resetVadState();
+}
+
+function spawnSystemAudioProcess(executable, args, geminiSessionRef, { label, inputChannels = 1, env = {} }) {
+    return new Promise(resolve => {
+        try {
+            const spawnOptions = {
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: { ...process.env, ...env },
+            };
+
+            if (process.platform === 'win32') {
+                spawnOptions.windowsHide = true;
+            }
+
+            const proc = spawn(executable, args, spawnOptions);
+            let resolved = false;
+            let readinessTimer = setTimeout(() => {
+                readinessTimer = null;
+                finalizeSuccess();
+            }, 800);
+
+            const finalizeSuccess = firstChunk => {
+                if (resolved) return;
+                resolved = true;
+                if (readinessTimer) {
+                    clearTimeout(readinessTimer);
+                    readinessTimer = null;
+                }
+
+                systemAudioProc = proc;
+                const handleChunk = createChunkHandler(geminiSessionRef, inputChannels);
+                if (firstChunk) {
+                    handleChunk(firstChunk);
+                }
+
+                proc.stdout.on('data', handleChunk);
+                proc.stderr.on('data', data => {
+                    const message = data.toString();
+                    if (message.trim().length) {
+                        logger.error(`${label} stderr:`, message);
+                    }
+                });
+
+                proc.on('close', code => {
+                    logger.info(`${label} exited with code ${code}`);
+                    if (systemAudioProc === proc) {
+                        systemAudioProc = null;
+                        resetVadState();
+                    }
+                });
+
+                proc.on('error', err => {
+                    logger.error(`${label} process error:`, err);
+                    if (systemAudioProc === proc) {
+                        systemAudioProc = null;
+                        resetVadState();
+                    }
+                });
+
+                resolve(true);
+            };
+
+            proc.stdout.once('data', data => {
+                finalizeSuccess(data);
+            });
+
+            proc.once('error', err => {
+                if (readinessTimer) {
+                    clearTimeout(readinessTimer);
+                    readinessTimer = null;
+                }
+                logger.error(`${label} spawn error:`, err);
+                if (!resolved) {
+                    resolve(false);
+                }
+            });
+
+            proc.once('close', code => {
+                if (readinessTimer) {
+                    clearTimeout(readinessTimer);
+                    readinessTimer = null;
+                }
+                if (!resolved) {
+                    logger.error(`${label} exited before streaming audio (code ${code})`);
+                    resolve(false);
+                }
+            });
+        } catch (error) {
+            logger.error(`Failed to spawn ${label}:`, error);
+            resolve(false);
         }
     });
+}
 
     systemAudioProc.stderr.on('data', data => {
         const stderrOutput = data.toString();
@@ -118,24 +298,27 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         systemAudioProc = null;
     });
 
-    return true;
+        const maxBuffer = SAMPLE_RATE * inputChannels * BYTES_PER_SAMPLE;
+        if (buffer.length > maxBuffer) {
+            buffer = buffer.slice(-maxBuffer);
+        }
+    };
 }
 
-function convertStereoToMono(stereoBuffer) {
-    const samples = stereoBuffer.length / 4;
-    const monoBuffer = Buffer.alloc(samples * 2);
+function downmixToMono(buffer, inputChannels = 2) {
+    if (inputChannels <= 1) {
+        return buffer;
+    }
+
+    const samples = buffer.length / (BYTES_PER_SAMPLE * inputChannels);
+    const monoBuffer = Buffer.alloc(samples * BYTES_PER_SAMPLE);
+
     for (let i = 0; i < samples; i++) {
-        const leftSample = stereoBuffer.readInt16LE(i * 4);
-        monoBuffer.writeInt16LE(leftSample, i * 2);
+        const firstChannelSample = buffer.readInt16LE((i * inputChannels) * BYTES_PER_SAMPLE);
+        monoBuffer.writeInt16LE(firstChannelSample, i * BYTES_PER_SAMPLE);
     }
-    return monoBuffer;
-}
 
-function stopMacOSAudioCapture() {
-    if (systemAudioProc) {
-        systemAudioProc.kill('SIGTERM');
-        systemAudioProc = null;
-    }
+    return monoBuffer;
 }
 
 async function sendAudioToGemini(base64Data, geminiSessionRef) {
@@ -176,9 +359,14 @@ function computeEnergyFromBase64Pcm16(base64Data) {
 
 module.exports = {
     killExistingSystemAudioDump,
+    startSystemAudioCapture,
     startMacOSAudioCapture,
-    convertStereoToMono,
-    stopMacOSAudioCapture,
+    startWindowsAudioCapture,
+    startLinuxAudioCapture,
+    stopSystemAudioCapture,
+    stopMacOSAudioCapture: stopSystemAudioCapture,
     sendAudioToGemini,
     computeEnergyFromBase64Pcm16,
+    downmixToMono,
+    convertStereoToMono: downmixToMono,
 };
