@@ -1,4 +1,7 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import defaultLogger from '../../utils/logger.js';
+
+const logger = globalThis.logger || defaultLogger || console;
 
 export class SidePanel extends LitElement {
     static styles = css`
@@ -34,12 +37,52 @@ export class SidePanel extends LitElement {
             padding: var(--main-content-padding);
             background: var(--panel-surface-background, rgba(255, 255, 255, 0.02));
             backdrop-filter: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        .transcript-item:not(:last-child) {
-            margin-bottom: 16px;
+        .transcripts-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .transcripts-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .transcripts-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .transcript-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .transcript-item {
             padding-bottom: 12px;
             border-bottom: 1px solid var(--glass-border, var(--border-color));
+        }
+
+        .transcript-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: var(--muted-text-color, rgba(255, 255, 255, 0.6));
+            margin-bottom: 6px;
         }
 
         .transcription,
@@ -47,6 +90,11 @@ export class SidePanel extends LitElement {
             margin: 0 0 4px 0;
             font-size: 14px;
             line-height: 1.4;
+        }
+
+        .empty-transcript {
+            font-size: 14px;
+            color: var(--muted-text-color, rgba(255, 255, 255, 0.6));
         }
 
         .notes {
@@ -64,6 +112,7 @@ export class SidePanel extends LitElement {
             gap: 8px;
         }
 
+        .action-button,
         .save-button {
             background: var(--button-background);
             color: var(--text-color);
@@ -76,8 +125,14 @@ export class SidePanel extends LitElement {
             -webkit-backdrop-filter: var(--glass-backdrop-filter, blur(22px) saturate(150%));
         }
 
+        .action-button:hover,
         .save-button:hover {
             background: var(--hover-background);
+        }
+
+        .action-button.danger {
+            color: var(--destructive-text-color, #ff6b6b);
+            border-color: var(--destructive-border-color, rgba(255, 107, 107, 0.6));
         }
 
         .format-select {
@@ -134,6 +189,19 @@ export class SidePanel extends LitElement {
         this.exportFormat = 'json';
     }
 
+    formatTimestamp(timestamp) {
+        if (!timestamp) return 'Unknown time';
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return 'Unknown time';
+        return date.toLocaleString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            month: 'short',
+            day: 'numeric',
+        });
+    }
+
     _onNotesChange(e) {
         this.notes = e.target.value;
         this.dispatchEvent(
@@ -172,17 +240,59 @@ export class SidePanel extends LitElement {
         }
     }
 
+    _onCopyTranscript() {
+        this.dispatchEvent(
+            new CustomEvent('copy-transcript', {
+                bubbles: true,
+                composed: true,
+            })
+        );
+    }
+
+    _onClearSessionData() {
+        this.dispatchEvent(
+            new CustomEvent('clear-session-data', {
+                bubbles: true,
+                composed: true,
+            })
+        );
+    }
+
     render() {
         return html`
             <div class="transcripts">
-                ${this.transcripts.map(
-                    (item) => html`
-                        <div class="transcript-item">
-                            <div class="transcription">${item.transcription}</div>
-                            <div class="ai-response">${item.ai_response}</div>
-                        </div>
-                    `
-                )}
+                <div class="transcripts-header">
+                    <div class="transcripts-title">Transcript</div>
+                    <div class="transcripts-actions">
+                        <button class="action-button" type="button" @click=${() => this._onCopyTranscript()}>
+                            Copy transcript
+                        </button>
+                        <button
+                            class="action-button danger"
+                            type="button"
+                            @click=${() => this._onClearSessionData()}
+                        >
+                            Clear notes & transcript
+                        </button>
+                    </div>
+                </div>
+                <div class="transcript-list">
+                    ${this.transcripts.length
+                        ? this.transcripts.map(
+                              item => html`
+                                  <div class="transcript-item">
+                                      <div class="timestamp">${this.formatTimestamp(item.timestamp)}</div>
+                                      ${item.transcription
+                                          ? html`<div class="transcription">${item.transcription}</div>`
+                                          : null}
+                                      ${item.ai_response
+                                          ? html`<div class="ai-response">${item.ai_response}</div>`
+                                          : null}
+                                  </div>
+                              `
+                          )
+                        : html`<div class="empty-transcript">No transcript captured yet.</div>`}
+                </div>
             </div>
             <div class="notes">
                 <textarea

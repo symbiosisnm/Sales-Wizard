@@ -26,6 +26,11 @@ test('exportSession generates JSON blob with metadata', async () => {
                     transcription: 'hello',
                     ai_response: 'hi',
                 },
+                {
+                    timestamp: 60000,
+                    transcription: 'bye',
+                    ai_response: 'see ya',
+                },
             ],
         },
         notes: 'some notes',
@@ -36,7 +41,11 @@ test('exportSession generates JSON blob with metadata', async () => {
     const data = JSON.parse(text);
     assert.strictEqual(data.notes, 'some notes');
     assert.strictEqual(data.metadata.profile, 'interview');
-    assert.strictEqual(data.conversation.length, 1);
+    assert.strictEqual(data.conversation.length, 2);
+    assert.strictEqual(data.metadata.turnCount, 2);
+    assert.strictEqual(data.metadata.startedAt, new Date(0).toISOString());
+    assert.strictEqual(data.metadata.endedAt, new Date(60000).toISOString());
+    assert.ok(data.metadata.exportedAt);
 });
 
 test('exportSession generates Markdown blob', async () => {
@@ -59,4 +68,5 @@ test('exportSession generates Markdown blob', async () => {
     assert.ok(text.includes('# Session abc'));
     assert.ok(text.includes('note'));
     assert.ok(text.includes('hello'));
+    assert.ok(text.includes('Turns: 1'));
 });

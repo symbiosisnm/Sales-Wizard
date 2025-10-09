@@ -224,9 +224,10 @@ export class SalesWizardApp extends LitElement {
                 if (data.reply) {
                     this.setResponse(data.reply);
                     if (this.sessionId) {
+                        const timestamp = Date.now();
                         this.transcripts = [
                             ...this.transcripts,
-                            { transcription: transcript, ai_response: data.reply },
+                            { transcription: transcript, ai_response: data.reply, timestamp },
                         ];
                         try {
                             await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
@@ -236,6 +237,7 @@ export class SalesWizardApp extends LitElement {
                                     transcription: transcript,
                                     ai_response: data.reply,
                                     notes: this.noteText,
+                                    timestamp,
                                 }),
                             });
                         } catch (err) {
@@ -428,10 +430,11 @@ export class SalesWizardApp extends LitElement {
         this.notes = [];
         this.noteText = '';
         try {
+            const timestamp = Date.now();
             await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionStart: true, notes: '' }),
+                body: JSON.stringify({ sessionStart: true, notes: '', timestamp }),
             });
         } catch (error) {
             logger.error('Failed to start session history:', error);
@@ -498,13 +501,92 @@ export class SalesWizardApp extends LitElement {
         this.noteText = newNotes;
         if (!this.sessionId) return;
         try {
+            const timestamp = Date.now();
             await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notes: this.noteText }),
+                body: JSON.stringify({ notes: this.noteText, timestamp }),
             });
         } catch (error) {
             logger.error('Failed to save notes:', error);
+        }
+    }
+
+    async handleCopyTranscript() {
+        if (!this.transcripts?.length) {
+            this.setStatus('No transcript available to copy');
+            return;
+        }
+
+        const segments = this.transcripts
+            .map(turn => {
+                const timestamp = turn.timestamp ? new Date(turn.timestamp) : null;
+                const label = timestamp ? timestamp.toLocaleString() : 'Unknown time';
+                const parts = [];
+                if (turn.transcription) {
+                    parts.push(`User [${label}]: ${turn.transcription}`);
+                }
+                if (turn.ai_response) {
+                    parts.push(`Assistant [${label}]: ${turn.ai_response}`);
+                }
+                return parts.join('\n');
+            })
+            .filter(Boolean);
+
+        if (!segments.length) {
+            this.setStatus('No transcript available to copy');
+            return;
+        }
+
+        const transcriptText = segments.join('\n\n');
+
+        try {
+            if (navigator?.clipboard?.writeText) {
+                await navigator.clipboard.writeText(transcriptText);
+            } else if (typeof document !== 'undefined') {
+                const textarea = document.createElement('textarea');
+                textarea.value = transcriptText;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'absolute';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            } else {
+                throw new Error('Clipboard API unavailable');
+            }
+            this.setStatus('Transcript copied to clipboard');
+        } catch (error) {
+            logger.error('Failed to copy transcript:', error);
+            this.setStatus('Failed to copy transcript');
+        }
+    }
+
+    async handleClearSessionData() {
+        this.transcripts = [];
+        this.noteText = '';
+        this.requestUpdate();
+
+        if (!this.sessionId) {
+            return;
+        }
+
+        try {
+            const timestamp = Date.now();
+            await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notes: '',
+                    clearTranscripts: true,
+                    timestamp,
+                }),
+            });
+            this.setStatus('Session notes and transcript cleared');
+        } catch (error) {
+            logger.error('Failed to clear session data:', error);
+            this.setStatus('Failed to clear session data');
         }
     }
 
@@ -623,6 +705,8 @@ export class SalesWizardApp extends LitElement {
                             .transcripts=${this.transcripts}
                             .selectedProfile=${this.selectedProfile}
                             @notes-change=${e => this.handleNotesChange(e)}
+                            @copy-transcript=${() => this.handleCopyTranscript()}
+                            @clear-session-data=${() => this.handleClearSessionData()}
                         ></side-panel>
                     </div>
                 `;
