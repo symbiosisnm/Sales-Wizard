@@ -339,3 +339,100 @@ test('canvas fallback draws frame and cleans up DOM nodes', async () => {
     if (origBtoa) global.btoa = origBtoa; else delete global.btoa;
   }
 });
+
+test('electron IPC path wires callbacks and stops stream', async () => {
+  const origWindow = global.window;
+  const start = mock.fn(async () => ({ success: true }));
+  const stop = mock.fn(async () => ({ success: true }));
+  const removeResponse = mock.fn();
+  const removeStatus = mock.fn();
+  let responseHandler;
+  let statusHandler;
+
+  global.window = {
+    electron: {
+      startLiveStream: start,
+      stopLiveStream: stop,
+      onUpdateResponse: handler => {
+        responseHandler = handler;
+      },
+      onUpdateStatus: handler => {
+        statusHandler = handler;
+      },
+      removeUpdateResponseListener: handler => removeResponse(handler),
+      removeUpdateStatusListener: handler => removeStatus(handler),
+    },
+  };
+
+  const onResponse = mock.fn();
+  const onStatus = mock.fn();
+  const onError = mock.fn();
+
+  const stopFn = await startLiveStreaming({
+    onResponse,
+    onStatus,
+    onError,
+    onAudioLevel: () => {},
+    onNote: () => {},
+  });
+
+  assert.strictEqual(start.mock.callCount(), 1);
+  assert.deepStrictEqual(onStatus.mock.calls[0].arguments, ['Initializing live stream...']);
+
+  statusHandler({}, 'Listening...');
+  assert.deepStrictEqual(onStatus.mock.calls.at(-1).arguments, ['Listening...']);
+
+  responseHandler({}, 'Hello world');
+  assert.deepStrictEqual(onResponse.mock.calls.at(-1).arguments, ['Hello world']);
+  assert.strictEqual(onError.mock.callCount(), 0);
+
+  stopFn();
+  assert.strictEqual(stop.mock.callCount(), 1);
+  assert.strictEqual(removeResponse.mock.callCount(), 1);
+  assert.strictEqual(removeStatus.mock.callCount(), 1);
+
+  if (typeof origWindow === 'undefined') {
+    delete global.window;
+  } else {
+    global.window = origWindow;
+  }
+});
+
+test('electron IPC path surfaces start errors', async () => {
+  const origWindow = global.window;
+  const start = mock.fn(async () => ({ success: false, error: 'no session' }));
+  const stop = mock.fn(async () => ({ success: true }));
+  const removeResponse = mock.fn();
+  const removeStatus = mock.fn();
+
+  global.window = {
+    electron: {
+      startLiveStream: start,
+      stopLiveStream: stop,
+      onUpdateResponse: () => {},
+      onUpdateStatus: () => {},
+      removeUpdateResponseListener: handler => removeResponse(handler),
+      removeUpdateStatusListener: handler => removeStatus(handler),
+    },
+  };
+
+  const onResponse = mock.fn();
+  const onStatus = mock.fn();
+  const onError = mock.fn();
+
+  await assert.rejects(
+    startLiveStreaming({ onResponse, onStatus, onError, onAudioLevel: () => {}, onNote: () => {} }),
+    /no session/
+  );
+
+  assert.strictEqual(onError.mock.callCount(), 1);
+  assert.strictEqual(stop.mock.callCount(), 0);
+  assert.strictEqual(removeResponse.mock.callCount(), 1);
+  assert.strictEqual(removeStatus.mock.callCount(), 1);
+
+  if (typeof origWindow === 'undefined') {
+    delete global.window;
+  } else {
+    global.window = origWindow;
+  }
+});

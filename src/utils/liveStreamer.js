@@ -5,6 +5,88 @@ import { generateNotesFromResponse } from './summarizer.js';
 // Fallback to console if the logger script fails to attach to globalThis
 const logger = globalThis.logger || defaultLogger || console;
 
+async function startElectronLiveStream({ onResponse, onStatus, onError }) {
+  const electronApi = typeof window !== 'undefined' ? window?.electron : undefined;
+  if (!electronApi || typeof electronApi.startLiveStream !== 'function') {
+    throw new Error('Electron live stream API unavailable');
+  }
+
+  onStatus('Initializing live stream...');
+
+  let cleanedUp = false;
+  let responseListener = null;
+  let statusListener = null;
+
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    try {
+      if (responseListener && typeof electronApi.removeUpdateResponseListener === 'function') {
+        electronApi.removeUpdateResponseListener(responseListener);
+      }
+    } catch (err) {
+      logger.warn('Failed to remove live response listener:', err);
+    }
+    try {
+      if (statusListener && typeof electronApi.removeUpdateStatusListener === 'function') {
+        electronApi.removeUpdateStatusListener(statusListener);
+      }
+    } catch (err) {
+      logger.warn('Failed to remove live status listener:', err);
+    }
+    responseListener = null;
+    statusListener = null;
+  };
+
+  if (typeof electronApi.onUpdateResponse === 'function') {
+    responseListener = (_event, payload) => {
+      try {
+        if (typeof payload === 'string' && payload.length > 0) {
+          onResponse(payload);
+        }
+      } catch (err) {
+        logger.warn('Error in live response callback:', err);
+      }
+    };
+    electronApi.onUpdateResponse(responseListener);
+  }
+
+  if (typeof electronApi.onUpdateStatus === 'function') {
+    statusListener = (_event, status) => {
+      try {
+        onStatus(status);
+        if (typeof status === 'string' && status.toLowerCase().includes('error')) {
+          onError(status);
+        }
+      } catch (err) {
+        logger.warn('Error in live status callback:', err);
+      }
+    };
+    electronApi.onUpdateStatus(statusListener);
+  }
+
+  try {
+    const result = await electronApi.startLiveStream();
+    if (!result?.success) {
+      throw new Error(result?.error || 'Failed to start live stream');
+    }
+  } catch (error) {
+    const message = error?.message || String(error);
+    onError(message);
+    cleanup();
+    throw error;
+  }
+
+  return () => {
+    cleanup();
+    if (typeof electronApi.stopLiveStream === 'function') {
+      Promise.resolve(electronApi.stopLiveStream()).catch(err => {
+        logger.warn('Error stopping live stream via IPC:', err);
+      });
+    }
+  };
+}
+
 /**
  * Starts streaming microphone audio and screen captures to the backend
  * through {@link LLMClient}. Text responses from the model are forwarded to
@@ -24,6 +106,15 @@ export async function startLiveStreaming({
   onAudioLevel = () => {},
   onNote = () => {},
 }) {
+  const hasElectronIpc =
+    typeof window !== 'undefined' &&
+    window?.electron &&
+    typeof window.electron.startLiveStream === 'function';
+
+  if (hasElectronIpc) {
+    return startElectronLiveStream({ onResponse, onStatus, onError });
+  }
+
   const client = new LLMClient();
   client.onText = msg => {
     try {
