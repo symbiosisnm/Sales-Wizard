@@ -147,7 +147,7 @@ export class SalesWizardApp extends LitElement {
         sessionId: { type: String },
         transcripts: { type: Array },
         notes: { type: Array },
-        noteText: { type: String },
+        manualNotes: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -178,7 +178,7 @@ export class SalesWizardApp extends LitElement {
         this.sessionId = null;
         this.transcripts = [];
         this.notes = [];
-        this.noteText = '';
+        this.manualNotes = '';
         this.audioLevel = 0;
 
         // Apply layout mode to document root
@@ -235,7 +235,8 @@ export class SalesWizardApp extends LitElement {
                                 body: JSON.stringify({
                                     transcription: transcript,
                                     ai_response: data.reply,
-                                    notes: this.noteText,
+                                    notes: this.notes,
+                                    manualNotes: this.manualNotes,
                                 }),
                             });
                         } catch (err) {
@@ -262,7 +263,17 @@ export class SalesWizardApp extends LitElement {
             },
             onNote: note => {
                 if (note) {
-                    this.notes = [...this.notes, note];
+                    const normalizedNote = {
+                        ...note,
+                        type: note.type || 'auto',
+                        text: typeof note.text === 'string' ? note.text : '',
+                        timestamp:
+                            typeof note.timestamp === 'number'
+                                ? note.timestamp
+                                : Date.now(),
+                    };
+                    this.notes = [...this.notes, normalizedNote];
+                    this.persistNotes();
                     this.requestUpdate();
                 }
             },
@@ -426,12 +437,16 @@ export class SalesWizardApp extends LitElement {
         this.sessionId = self.crypto?.randomUUID?.() ?? Date.now().toString();
         this.transcripts = [];
         this.notes = [];
-        this.noteText = '';
+        this.manualNotes = '';
         try {
             await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionStart: true, notes: '' }),
+                body: JSON.stringify({
+                    sessionStart: true,
+                    notes: this.notes,
+                    manualNotes: this.manualNotes,
+                }),
             });
         } catch (error) {
             logger.error('Failed to start session history:', error);
@@ -493,15 +508,33 @@ export class SalesWizardApp extends LitElement {
         }
     }
 
-    async handleNotesChange(e) {
+    async handleManualNotesChange(e) {
         const newNotes = e?.detail?.value ?? e?.target?.value ?? '';
-        this.noteText = newNotes;
+        this.manualNotes = newNotes;
+        await this.persistNotes();
+    }
+
+    async handleStructuredNotesChange(e) {
+        const updatedNotes = Array.isArray(e?.detail?.notes) ? e.detail.notes : [];
+        this.notes = updatedNotes.map(note => ({
+            ...note,
+            type: note.type || 'auto',
+            text: typeof note.text === 'string' ? note.text : '',
+            timestamp: typeof note.timestamp === 'number' ? note.timestamp : Date.now(),
+        }));
+        await this.persistNotes();
+    }
+
+    async persistNotes() {
         if (!this.sessionId) return;
         try {
             await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notes: this.noteText }),
+                body: JSON.stringify({
+                    notes: this.notes,
+                    manualNotes: this.manualNotes,
+                }),
             });
         } catch (error) {
             logger.error('Failed to save notes:', error);
@@ -619,10 +652,12 @@ export class SalesWizardApp extends LitElement {
                             }}
                         ></assistant-view>
                         <side-panel
-                            .notes=${this.noteText}
+                            .structuredNotes=${this.notes}
+                            .manualNotes=${this.manualNotes}
                             .transcripts=${this.transcripts}
                             .selectedProfile=${this.selectedProfile}
-                            @notes-change=${e => this.handleNotesChange(e)}
+                            @manual-notes-change=${e => this.handleManualNotesChange(e)}
+                            @structured-notes-change=${e => this.handleStructuredNotesChange(e)}
                         ></side-panel>
                     </div>
                 `;
