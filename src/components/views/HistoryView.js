@@ -1,8 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
-import { resolveBackendOrigin } from '../../services/backendConfig.js';
-
-const API_BASE = resolveBackendOrigin();
 
 export class HistoryView extends LitElement {
     static styles = css`
@@ -133,6 +130,34 @@ export class HistoryView extends LitElement {
 
         .session-notes-content {
             white-space: pre-wrap;
+        }
+
+        .session-structured-notes {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .session-structured-note {
+            border: 1px solid var(--button-border);
+            border-radius: 6px;
+            padding: 10px;
+            background: var(--input-background);
+        }
+
+        .session-structured-note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 11px;
+            color: var(--description-color);
+        }
+
+        .session-structured-note-type {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 600;
         }
 
         .back-header {
@@ -381,20 +406,24 @@ export class HistoryView extends LitElement {
         // Resize window for this view
         resizeLayout();
         const limit = localStorage.getItem('historySessionLimit');
-        if (limit) {
-            fetch(`${API_BASE}/history/limit`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ limit }),
-            }).catch(err => logger.error('Failed to apply history limit:', err));
+        if (limit && window.electron?.historySetLimit) {
+            window.electron.historySetLimit(limit).catch(err => logger.error('Failed to apply history limit:', err));
         }
     }
 
     async loadSessions() {
         try {
-        this.loading = true;
-        const response = await fetch(`${API_BASE}/history`);
-        this.sessions = await response.json();
+            this.loading = true;
+            if (window.electron?.historyList) {
+                const result = await window.electron.historyList();
+                if (result?.success) {
+                    this.sessions = Array.isArray(result.data) ? result.data : [];
+                } else {
+                    throw new Error(result?.error || 'Failed to load history');
+                }
+            } else {
+                this.sessions = [];
+            }
         } catch (error) {
             logger.error('Error loading conversation sessions:', error);
             this.sessions = [];
@@ -437,9 +466,15 @@ export class HistoryView extends LitElement {
     async fetchSession(sessionId) {
         try {
             this.loading = true;
-            const res = await fetch(`${API_BASE}/history/${sessionId}`);
-            const data = await res.json();
-            this.selectedSession = { ...data, notes: data.notes || '' };
+            if (window.electron?.historyGet) {
+                const result = await window.electron.historyGet(sessionId);
+                if (result?.success) {
+                    const data = result.data || {};
+                    this.selectedSession = { ...data, notes: data.notes || '' };
+                } else {
+                    throw new Error(result?.error || 'Failed to load session');
+                }
+            }
         } catch (error) {
             logger.error('Error loading session transcript:', error);
         } finally {
@@ -453,9 +488,15 @@ export class HistoryView extends LitElement {
 
     async handleClearHistory() {
         try {
-            await fetch(`${API_BASE}/history`, { method: 'DELETE' });
-            this.sessions = [];
-            this.selectedSession = null;
+            if (window.electron?.historyClear) {
+                const result = await window.electron.historyClear();
+                if (result?.success) {
+                    this.sessions = [];
+                    this.selectedSession = null;
+                } else {
+                    throw new Error(result?.error || 'Failed to clear history');
+                }
+            }
         } catch (error) {
             logger.error('Error clearing history:', error);
         }
@@ -470,7 +511,8 @@ export class HistoryView extends LitElement {
                     sessionId: this.selectedSession.id,
                     history: this.selectedSession.conversationHistory || [],
                 },
-                notes: this.selectedSession.notes || '',
+                structuredNotes: this.selectedSession.notes || [],
+                manualNotes: this.selectedSession.manualNotes || '',
                 profile: this.selectedSession.profile || localStorage.getItem('selectedProfile') || '',
             });
             if (res?.success) {
@@ -595,7 +637,7 @@ export class HistoryView extends LitElement {
     renderConversationView() {
         if (!this.selectedSession) return html``;
 
-        const { conversationHistory, notes } = this.selectedSession;
+        const { conversationHistory, notes, manualNotes } = this.selectedSession;
 
         // Flatten the conversation turns into individual messages
         const messages = [];
@@ -653,11 +695,31 @@ export class HistoryView extends LitElement {
                 </div>
             </div>
             <div class="conversation-view">
-                ${notes
+                ${Array.isArray(notes) && notes.length
                     ? html`
                           <div class="session-notes">
-                              <div class="session-notes-title">Notes</div>
-                              <div class="session-notes-content">${notes}</div>
+                              <div class="session-notes-title">Structured Notes</div>
+                              <div class="session-structured-notes">
+                                  ${notes.map(
+                                      note => html`
+                                          <div class="session-structured-note">
+                                              <div class="session-structured-note-header">
+                                                  <span class="session-structured-note-type">${(note.type || 'auto').toUpperCase()}</span>
+                                                  <span>${this.formatTimestamp(note.timestamp)}</span>
+                                              </div>
+                                              <div class="session-notes-content">${note.text || ''}</div>
+                                          </div>
+                                      `
+                                  )}
+                              </div>
+                          </div>
+                      `
+                    : ''}
+                ${manualNotes
+                    ? html`
+                          <div class="session-notes">
+                              <div class="session-notes-title">Manual Notes</div>
+                              <div class="session-notes-content">${manualNotes}</div>
                           </div>
                       `
                     : ''}

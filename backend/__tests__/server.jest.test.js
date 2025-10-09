@@ -1,0 +1,129 @@
+const request = require('supertest');
+const WebSocket = require('ws');
+const { createBackend } = require('../server');
+const { createMockGenai } = require('../../tests/fixtures/mockGenai');
+
+function createHistoryStore() {
+  return {
+    appendTurn: jest.fn(),
+    clearHistory: jest.fn(),
+    listSessions: jest.fn().mockReturnValue([{ id: 'session-1' }]),
+    getSession: jest.fn(id => (id === 'session-1' ? { id, turns: [] } : null)),
+    setMaxSessions: jest.fn(),
+  };
+}
+
+describe('backend/server', () => {
+  let logger;
+
+  beforeEach(() => {
+    logger = { info: jest.fn(), error: jest.fn() };
+  });
+
+  test('updates context params and builds system instruction', async () => {
+    const historyStore = createHistoryStore();
+    const { genai } = createMockGenai();
+    const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: genai });
+    const agent = request(backend.app);
+
+    await agent.put('/context-params').send({ allowedSources: 'Docs', toneLength: 'Short' }).expect(200);
+    const response = await agent.get('/context-params').expect(200);
+    expect(response.body).toEqual({
+      allowedSources: 'Docs',
+      toneLength: 'Short',
+      disallowedTopics: '',
+    });
+
+    const instruction = backend.buildSystemInstruction();
+    expect(instruction).toContain('Docs');
+    expect(instruction).toContain('Short');
+  });
+
+  test('answers ask endpoint and records history', async () => {
+    const historyStore = createHistoryStore();
+    const { genai } = createMockGenai({ replyText: 'Hello there' });
+    const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: genai });
+    const agent = request(backend.app);
+
+    const res = await agent.post('/ask').send({ prompt: 'Hi' }).expect(200);
+    expect(res.body).toEqual({ reply: 'Hello there' });
+    expect(backend.state.history).toEqual([{ prompt: 'Hi', reply: 'Hello there' }]);
+  });
+
+  test('handles generation errors gracefully', async () => {
+    const historyStore = createHistoryStore();
+    const { genai } = createMockGenai();
+    const error = new Error('boom');
+    genai.getGenerativeModel().generateContent.mockRejectedValueOnce(error);
+    const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: genai });
+    const agent = request(backend.app);
+
+    const res = await agent.post('/ask').send({ prompt: 'Hi' }).expect(500);
+    expect(res.body).toEqual({ error: 'Generation failed' });
+    expect(logger.error).toHaveBeenCalledWith('Error:', error);
+  });
+
+  test('delegates to history store implementations', async () => {
+    const historyStore = createHistoryStore();
+    const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: createMockGenai().genai });
+    const agent = request(backend.app);
+
+    await agent.post('/history/test-session/turn').send({ role: 'user' }).expect(200);
+    expect(historyStore.appendTurn).toHaveBeenCalledWith('test-session', { role: 'user' });
+
+    await agent.delete('/history').expect(200);
+    expect(historyStore.clearHistory).toHaveBeenCalled();
+
+    await agent.get('/history').expect(200);
+    expect(historyStore.listSessions).toHaveBeenCalled();
+
+    await agent.put('/history/limit').send({ limit: 10 }).expect(200);
+    expect(historyStore.setMaxSessions).toHaveBeenCalledWith(10);
+
+    const notFound = await agent.get('/history/unknown').expect(404);
+    expect(notFound.body).toEqual({ error: 'Not found' });
+  });
+
+  test('websocket bridge proxies messages to Gemini and back', async () => {
+    const responses = [{ text: 'streamed response' }];
+    const { genai, session } = createMockGenai({ responses });
+    const historyStore = createHistoryStore();
+    const backend = createBackend({
+      logger,
+      historyStoreImpl: historyStore,
+      genaiClient: genai,
+      ModalityEnum: { TEXT: 'TEXT' },
+      port: 0,
+    });
+
+    const server = backend.app.listen(0);
+    const address = server.address();
+    const port = typeof address === 'object' ? address.port : 0;
+    const wss = backend.attachLiveWebSocket(server);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/live`);
+
+    await new Promise(resolve => ws.on('open', resolve));
+
+    const messagePromise = new Promise(resolve => ws.on('message', data => resolve(data.toString())));
+
+    const payload = { audio: Buffer.from('abc').toString('base64'), mimeType: 'audio/test' };
+    ws.send(JSON.stringify(payload));
+
+    await new Promise(resolve => setImmediate(resolve));
+    expect(session.sentInputs).toHaveLength(1);
+    expect(session.sentInputs[0]).toEqual({
+      audio: { data: Buffer.from('abc'), mime_type: 'audio/test' },
+    });
+
+    const message = await messagePromise;
+    expect(JSON.parse(message)).toEqual({ text: 'streamed response' });
+
+    ws.close();
+    await new Promise(resolve => ws.on('close', resolve));
+    expect(session.closed).toBe(true);
+
+    await new Promise(resolve => wss.close(resolve));
+    await new Promise(resolve => server.close(resolve));
+  });
+});

@@ -195,7 +195,14 @@ async function sendImage(geminiSessionRef, data) {
  * @param {Object} [opts.session] - Optional session data { sessionId, history }.
  * @returns {{ blob: Blob, filename: string }}
  */
-function exportSession({ format = 'json', notes = '', profile = '', session } = {}) {
+function exportSession({
+    format = 'json',
+    structuredNotes,
+    notes,
+    manualNotes,
+    profile = '',
+    session,
+} = {}) {
     const exportedAt = new Date().toISOString();
 
     let sessionId;
@@ -209,24 +216,57 @@ function exportSession({ format = 'json', notes = '', profile = '', session } = 
         history = current.history;
     }
 
+    const turnCount = Array.isArray(history) ? history.length : 0;
+    const timestampValues = (history || [])
+        .map(turn => (typeof turn.timestamp === 'number' ? turn.timestamp : null))
+        .filter(value => Number.isFinite(value));
+    const startedAt = timestampValues.length ? new Date(Math.min(...timestampValues)).toISOString() : null;
+    const endedAt = timestampValues.length ? new Date(Math.max(...timestampValues)).toISOString() : null;
+
     const metadata = {
         sessionId,
         exportedAt,
         profile,
+        turnCount,
+        startedAt,
+        endedAt,
     };
 
     let content = '';
     let mimeType = 'application/json';
     let extension = 'json';
 
+    const noteEntries = Array.isArray(structuredNotes)
+        ? structuredNotes
+        : Array.isArray(notes)
+        ? notes
+        : [];
+    const manualNoteText =
+        typeof manualNotes === 'string'
+            ? manualNotes
+            : typeof notes === 'string'
+            ? notes
+            : '';
+
     if (format === 'markdown' || format === 'md') {
-        const lines = [`# Session ${sessionId}`, '', `- Profile: ${profile}`, `- Exported: ${exportedAt}`, ''];
+        const lines = [`# Session ${sessionId}`, '', `- Profile: ${profile || 'Unknown'}`, `- Exported: ${exportedAt}`];
+        if (metadata.startedAt) {
+            lines.push(`- Started: ${metadata.startedAt}`);
+        }
+        if (metadata.endedAt) {
+            lines.push(`- Ended: ${metadata.endedAt}`);
+        }
+        lines.push(`- Turns: ${turnCount}`);
+        lines.push('');
         if (notes) {
             lines.push('## Notes', notes, '');
         }
         lines.push('## Conversation');
         history.forEach(turn => {
-            const ts = new Date(turn.timestamp).toISOString();
+            const ts =
+                typeof turn.timestamp === 'number'
+                    ? new Date(turn.timestamp).toISOString()
+                    : 'Unknown time';
             if (turn.transcription) {
                 lines.push(`**User (${ts})**: ${turn.transcription}`);
             }
@@ -239,7 +279,12 @@ function exportSession({ format = 'json', notes = '', profile = '', session } = 
         mimeType = 'text/markdown';
         extension = 'md';
     } else {
-        const data = { metadata, notes, conversation: history };
+        const data = {
+            metadata,
+            notes: noteEntries,
+            manualNotes: manualNoteText,
+            conversation: history,
+        };
         content = JSON.stringify(data, null, 2);
     }
 

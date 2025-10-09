@@ -22,13 +22,21 @@ const api = {
   openExternal: url => ipcRenderer.invoke('open-external', url),
   viewChanged: view => ipcRenderer.send('view-changed', view),
   updateKeybinds: keybinds => ipcRenderer.send('update-keybinds', keybinds),
-  setContextParams: params => ipcRenderer.invoke('set-context-params', params),
+  contextGet: () => ipcRenderer.invoke('context:get'),
+  contextSet: params => ipcRenderer.invoke('context:set', params),
   updateGoogleSearchSetting: enabled =>
     ipcRenderer.invoke('update-google-search-setting', enabled),
   updateContentProtection: enabled =>
     ipcRenderer.invoke('update-content-protection', enabled),
+  getContentProtection: () => ipcRenderer.invoke('get-content-protection'),
   getRandomDisplayName: () => ipcRenderer.invoke('get-random-display-name'),
   exportSession: options => ipcRenderer.invoke('export-session', options),
+  historyList: () => ipcRenderer.invoke('history:list'),
+  historyGet: sessionId => ipcRenderer.invoke('history:get', sessionId),
+  historyClear: () => ipcRenderer.invoke('history:clear'),
+  historySetLimit: limit => ipcRenderer.invoke('history:set-limit', limit),
+  historyAddTurn: payload => ipcRenderer.invoke('history:add-turn', payload),
+  assistantAsk: prompt => ipcRenderer.invoke('assistant:ask', prompt),
   onUpdateResponse: handler => ipcRenderer.on('update-response', handler),
   removeUpdateResponseListener: handler =>
     ipcRenderer.removeListener('update-response', handler),
