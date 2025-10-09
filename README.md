@@ -36,7 +36,10 @@ The repository includes a Flutter demonstration of a "liquid glass" task manager
 ## Setup
 
 1. **Get a Gemini API Key**: Visit [Google AI Studio](https://aistudio.google.com/apikey)
-2. **Copy the Example Environment File**: `cp .env.example .env` and add your `GEMINI_API_KEY`
+2. **Copy the Example Environment File**: `cp .env.example .env` and add your `GEMINI_API_KEY`. Set `AUTH_TOKEN`
+   to a secret string and optionally configure `ALLOWED_ORIGINS` with a comma-separated list of frontend origins
+   allowed to call the backend. Requests to `/ask`, `/history/*`, and `/live` must include the correct token via an
+   `AUTH_TOKEN` header or query parameter.
 3. **Install Dependencies**: `npm install`
 4. **Run the App**: `npm start` (starts backend and desktop client)
 
@@ -118,6 +121,15 @@ npm run start:backend
 ```
 
 By default the server listens on port 3001 (or the value of the `PORT` environment variable).
+
+### Backend Security
+
+- **Authorization**: Protected endpoints (`/ask`, `/history/*`, and the `/live` WebSocket) reject requests that do not
+  include the configured `AUTH_TOKEN`. Supply the token using an `AUTH_TOKEN` header (recommended) or as an
+  `authToken`/`AUTH_TOKEN` query parameter.
+- **CORS**: Incoming requests must originate from an entry listed in `ALLOWED_ORIGINS`. If the variable is empty, the
+  backend accepts calls from any origin; otherwise, disallowed origins are rejected with `403` before reaching your
+  handlers.
 
 ## API Endpoints
 

@@ -46,7 +46,7 @@ function ensureDataDirectories() {
     return { imageDir, audioDir };
 }
 
-function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
+function createWindow(sendToRenderer, geminiSessionRef, randomNames = null, options = {}) {
     // Get layout preference (default to 'normal')
     let windowWidth = 840;
     let windowHeight = 460;
@@ -122,7 +122,8 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
             // ignore: best effort only
         }
     }
-    mainWindow.setContentProtection(true);
+    const { contentProtectionEnabled = false } = options;
+    mainWindow.setContentProtection(Boolean(contentProtectionEnabled));
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     mainWindow.once('ready-to-show', () => {
@@ -161,7 +162,7 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                     `
                 try {
                     const savedKeybinds = localStorage.getItem('customKeybinds');
-                    
+
                     return {
                         keybinds: savedKeybinds ? JSON.parse(savedKeybinds) : null
                     };
@@ -170,26 +171,14 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                 }
             `
                 )
-                .then(async savedSettings => {
+                .then(savedSettings => {
                     if (savedSettings.keybinds) {
                         keybinds = { ...defaultKeybinds, ...savedSettings.keybinds };
-                    }
-
-                    // Apply content protection setting via IPC handler
-                    try {
-                        const contentProtection = await mainWindow.webContents.executeJavaScript('salesWizard.getContentProtection()');
-                        mainWindow.setContentProtection(contentProtection);
-                        logger.info('Content protection loaded from settings:', contentProtection);
-                    } catch (error) {
-                        logger.error('Error loading content protection:', error);
-                        mainWindow.setContentProtection(true);
                     }
 
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 })
                 .catch(() => {
-                    // Default to content protection enabled
-                    mainWindow.setContentProtection(true);
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                 });
         }, 150);
@@ -210,7 +199,6 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-        panicHide: isMac ? 'Cmd+Esc' : 'Ctrl+Esc',
         toggleMic: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
@@ -299,23 +287,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
             logger.info(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
         } catch (error) {
             logger.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
-        }
-    }
-
-    // Panic hide shortcut
-    if (keybinds.panicHide) {
-        try {
-            globalShortcut.register(keybinds.panicHide, () => {
-                try {
-                    if (mainWindow.isVisible()) mainWindow.hide();
-                    mainWindow.webContents.executeJavaScript('salesWizard && salesWizard.stopCapture && salesWizard.stopCapture()').catch(() => {});
-                } catch (err) {
-                    logger.error('Error during panicHide:', err);
-                }
-            });
-            logger.info(`Registered panicHide: ${keybinds.panicHide}`);
-        } catch (error) {
-            logger.error(`Failed to register panicHide (${keybinds.panicHide}):`, error);
         }
     }
 
