@@ -1,5 +1,8 @@
-const { spawn } = require('child_process');
+const childProcess = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { saveDebugAudio } = require('../audioUtils');
+const ipcUtils = require('./ipcUtils');
 
 let systemAudioProc = null;
 let vadSpeaking = false;
@@ -10,7 +13,7 @@ const VAD_SILENCE_SEND_MS = 2500;
 
 function killExistingSystemAudioDump() {
     return new Promise(resolve => {
-        const killProc = spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
+        const killProc = childProcess.spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
         killProc.on('close', () => resolve());
         killProc.on('error', () => resolve());
         setTimeout(() => {
@@ -25,13 +28,24 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     await killExistingSystemAudioDump();
 
     const { app } = require('electron');
-    const path = require('path');
 
     let systemAudioPath;
     if (app.isPackaged) {
         systemAudioPath = path.join(process.resourcesPath, 'SystemAudioDump');
     } else {
         systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
+    }
+
+    try {
+        await fs.promises.access(systemAudioPath, fs.constants.X_OK);
+    } catch (err) {
+        const message =
+            err.code === 'ENOENT'
+                ? 'Error: SystemAudioDump binary not found. Install it to enable system audio capture.'
+                : 'Error: SystemAudioDump binary is not executable. Check permissions.';
+        logger.error('SystemAudioDump binary validation failed:', err);
+        ipcUtils.sendToRenderer('update-status', message);
+        return false;
     }
 
     const spawnOptions = {
@@ -44,9 +58,17 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         spawnOptions.windowsHide = false;
     }
 
-    systemAudioProc = spawn(systemAudioPath, [], spawnOptions);
-    if (!systemAudioProc.pid) {
+    try {
+        systemAudioProc = childProcess.spawn(systemAudioPath, [], spawnOptions);
+    } catch (err) {
+        logger.error('Failed to start SystemAudioDump:', err);
+        ipcUtils.sendToRenderer('update-status', `Error starting system audio capture: ${err.message}`);
+        return false;
+    }
+
+    if (!systemAudioProc?.pid) {
         logger.error('Failed to start SystemAudioDump');
+        ipcUtils.sendToRenderer('update-status', 'Error starting system audio capture: SystemAudioDump failed to launch.');
         return false;
     }
 
@@ -77,15 +99,22 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     });
 
     systemAudioProc.stderr.on('data', data => {
-        logger.error('SystemAudioDump stderr:', data.toString());
+        const stderrOutput = data.toString();
+        logger.error('SystemAudioDump stderr:', stderrOutput);
+        ipcUtils.sendToRenderer('update-status', `SystemAudioDump stderr: ${stderrOutput.trim()}`);
     });
 
-    systemAudioProc.on('close', () => {
+    systemAudioProc.on('close', (code, signal) => {
         systemAudioProc = null;
+        if (code !== 0) {
+            const reason = signal ? ` (signal: ${signal})` : '';
+            ipcUtils.sendToRenderer('update-status', `SystemAudioDump exited with code ${code}${reason}`);
+        }
     });
 
     systemAudioProc.on('error', err => {
         logger.error('SystemAudioDump process error:', err);
+        ipcUtils.sendToRenderer('update-status', `SystemAudioDump process error: ${err.message}`);
         systemAudioProc = null;
     });
 
