@@ -8,9 +8,13 @@ global.WebSocket = class {
     setImmediate(() => this.onopen && this.onopen());
   }
   send() {}
-  close() { if (this.onclose) this.onclose(); }
+  close() {
+    this.readyState = global.WebSocket.CLOSED;
+    if (this.onclose) this.onclose();
+  }
 };
 global.WebSocket.OPEN = 1;
+global.WebSocket.CLOSED = 3;
 
 // Use real startLiveStreaming with stubbed WebSocket
 const { startLiveStreaming } = require('../liveStreamer');
@@ -21,6 +25,119 @@ function restoreTimers(orig) {
   global.setInterval = orig.setInterval;
   global.clearInterval = orig.clearInterval;
 }
+
+test('LLMClient emits error when socket is not open', () => {
+  global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn(), debug: mock.fn() };
+
+  const client = new LLMClient();
+  const errors = [];
+  client.onError = msg => errors.push(msg);
+
+  const sendMock = mock.fn();
+  client.ws = { readyState: global.WebSocket.CLOSED, send: sendMock };
+
+  client.sendText('hello');
+
+  assert.strictEqual(sendMock.mock.callCount(), 0, 'send should not be attempted when socket is closed');
+  assert.strictEqual(errors.length, 1, 'onError should be invoked once');
+  assert.match(errors[0], /state/i);
+  assert.match(errors[0], /hello/);
+  assert.ok(global.logger.warn.mock.callCount() >= 1, 'warning should be logged');
+});
+
+test('LLMClient surfaces send exceptions with payload context', () => {
+  global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn(), debug: mock.fn() };
+
+  const client = new LLMClient();
+  const errors = [];
+  client.onError = msg => errors.push(msg);
+
+  const sendMock = mock.fn(() => { throw new Error('boom'); });
+  client.ws = { readyState: global.WebSocket.OPEN, send: sendMock };
+
+  client.sendText('payload-check');
+
+  assert.strictEqual(sendMock.mock.callCount(), 1, 'send should be attempted once');
+  assert.strictEqual(errors.length, 1, 'onError should be invoked once');
+  assert.match(errors[0], /boom/);
+  assert.match(errors[0], /payload-check/);
+  assert.ok(global.logger.error.mock.callCount() >= 1, 'error should be logged');
+});
+
+test('startLiveStreaming propagates client send failure and stops streaming', async () => {
+  const origWebSocket = global.WebSocket;
+  const origOpen = global.WebSocket.OPEN;
+  const origClosed = global.WebSocket.CLOSED;
+  const origNavigator = global.navigator;
+  const origImageCapture = global.ImageCapture;
+  const origLogger = global.logger;
+  const origTimers = { setInterval, clearInterval };
+
+  global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn(), debug: mock.fn() };
+
+  class FailingWebSocket {
+    constructor() {
+      this.readyState = FailingWebSocket.OPEN;
+      setImmediate(() => this.onopen && this.onopen());
+    }
+    send() {
+      this.readyState = FailingWebSocket.CLOSED;
+      throw new Error('Simulated send failure');
+    }
+    close() {
+      this.readyState = FailingWebSocket.CLOSED;
+      if (this.onclose) this.onclose();
+    }
+  }
+  FailingWebSocket.OPEN = 1;
+  FailingWebSocket.CLOSED = 3;
+
+  global.WebSocket = FailingWebSocket;
+  global.WebSocket.OPEN = FailingWebSocket.OPEN;
+  global.WebSocket.CLOSED = FailingWebSocket.CLOSED;
+
+  const getDisplayMedia = mock.fn(async () => ({ getVideoTracks: () => [], getTracks: () => [] }));
+  global.navigator = {
+    mediaDevices: {
+      getUserMedia: mock.fn(async () => { throw new Error('no audio'); }),
+      getDisplayMedia,
+    },
+  };
+
+  global.ImageCapture = class { constructor() {} };
+
+  global.setInterval = mock.fn(() => 123);
+  global.clearInterval = mock.fn();
+
+  const onStatus = mock.fn();
+  const onError = mock.fn();
+
+  try {
+    const stopFn = await startLiveStreaming({ onResponse: () => {}, onStatus, onError });
+
+    assert.strictEqual(getDisplayMedia.mock.callCount(), 0, 'screen capture should not start after fatal error');
+    assert.ok(onError.mock.callCount() >= 1, 'onError should be triggered');
+    const errorMessage = onError.mock.calls[0].arguments[0];
+    assert.match(errorMessage, /WebSocket send failed/, 'error should mention send failure');
+
+    const statusMessages = onStatus.mock.calls.map(call => call.arguments[0]);
+    assert.ok(statusMessages.includes('WS open'), 'should report WS open status');
+    assert.ok(statusMessages.some(msg => /^Error: /.test(msg)), 'error status should be reported');
+    assert.strictEqual(statusMessages.at(-1), 'Screen capture ended', 'cleanup status should be emitted');
+
+    stopFn();
+
+    assert.ok(global.logger.error.mock.callCount() >= 1, 'logger should record the failure');
+  } finally {
+    global.WebSocket = origWebSocket;
+    global.WebSocket.OPEN = origOpen;
+    global.WebSocket.CLOSED = origClosed;
+    if (origNavigator === undefined) delete global.navigator; else global.navigator = origNavigator;
+    if (origImageCapture === undefined) delete global.ImageCapture; else global.ImageCapture = origImageCapture;
+    if (origLogger === undefined) delete global.logger; else global.logger = origLogger;
+    restoreTimers(origTimers);
+  }
+});
 
 test('screen track end stops interval and notifies status', async () => {
   global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn() };
