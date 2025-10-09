@@ -386,7 +386,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             });
             screenCapturer.onFrame(async ({ data, width, height }) => {
                 try {
-                    const result = await window.electron?.sendImageContent?.({ data });
+                    const result = await window.electron?.liveSendScreen?.({ data });
                     if (result.success) {
                         const imageTokens = tokenTracker.calculateImageTokens(width, height);
                         tokenTracker.addTokens(imageTokens, 'image');
@@ -412,7 +412,7 @@ async function setupLinuxMicProcessing(micStream) {
 
     const workletNode = await createPcmWorkletNode(micAudioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await window.electron?.sendAudioContent?.({
+        await window.electron?.liveSendAudio?.({
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -439,7 +439,7 @@ async function setupLinuxMicProcessing(micStream) {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await window.electron?.sendAudioContent?.({
+            await window.electron?.liveSendAudio?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -458,7 +458,7 @@ async function setupLinuxSystemAudioProcessing() {
 
     const node = await createPcmWorkletNode(audioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await window.electron?.sendAudioContent?.({
+        await window.electron?.liveSendAudio?.({
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -485,7 +485,7 @@ async function setupLinuxSystemAudioProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await window.electron?.sendAudioContent?.({
+            await window.electron?.liveSendAudio?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -503,7 +503,7 @@ async function setupWindowsLoopbackProcessing() {
 
     const node = await createPcmWorkletNode(audioContext, async bytes => {
         const base64Data = arrayBufferToBase64(bytes.buffer);
-        await window.electron?.sendAudioContent?.({
+        await window.electron?.liveSendAudio?.({
             data: base64Data,
             mimeType: 'audio/pcm;rate=24000',
         });
@@ -530,7 +530,7 @@ async function setupWindowsLoopbackProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const base64Data = arrayBufferToBase64(pcmData16.buffer);
 
-            await window.electron?.sendAudioContent?.({
+            await window.electron?.liveSendAudio?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -560,7 +560,7 @@ async function enableMicStreaming() {
 
         const node = await createPcmWorkletNode(pttMicContext, async bytes => {
             const base64Data = arrayBufferToBase64(bytes.buffer);
-            await window.electron?.sendAudioContent?.({
+            await window.electron?.liveSendAudio?.({
                 data: base64Data,
                 mimeType: 'audio/pcm;rate=24000',
             });
@@ -580,7 +580,7 @@ async function enableMicStreaming() {
                     const chunk = micBuf.splice(0, samplesPerChunk);
                     const pcm16 = convertFloat32ToInt16(chunk);
                     const base64Data = arrayBufferToBase64(pcm16.buffer);
-                    await window.electron?.sendAudioContent?.({
+                    await window.electron?.liveSendAudio?.({
                         data: base64Data,
                         mimeType: 'audio/pcm;rate=24000',
                     });

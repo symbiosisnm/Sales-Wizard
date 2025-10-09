@@ -4,6 +4,7 @@ const conversationStore = require('./conversationStore');
 const audioHandler = require('./audioHandler');
 const reconnection = require('./reconnection');
 const sessionManager = require('./sessionManager');
+const liveStreamManager = require('./liveStreamManager');
 
 function setupGeminiIpcHandlers(geminiSessionRef) {
     global.geminiSessionRef = geminiSessionRef;
@@ -26,6 +27,42 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: true };
         } catch (error) {
             logger.error('Error sending audio:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('start-live-stream', async (_event, options = {}) => {
+        try {
+            return liveStreamManager.startLiveStream(geminiSessionRef, options);
+        } catch (error) {
+            logger.error('Error starting live stream:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('stop-live-stream', async (_event, options = {}) => {
+        try {
+            return liveStreamManager.stopLiveStream(options);
+        } catch (error) {
+            logger.error('Error stopping live stream:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('live-send-audio', async (_event, payload = {}) => {
+        try {
+            return await liveStreamManager.sendLiveAudio(geminiSessionRef, payload);
+        } catch (error) {
+            logger.error('Error handling live audio payload:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('live-send-screen', async (_event, payload = {}) => {
+        try {
+            return await liveStreamManager.sendLiveScreen(geminiSessionRef, payload);
+        } catch (error) {
+            logger.error('Error handling live screen payload:', error);
             return { success: false, error: error.message };
         }
     });
