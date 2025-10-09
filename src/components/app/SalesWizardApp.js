@@ -15,11 +15,9 @@ import { startListening } from '../../utils/voiceAssistant.js';
 // Live streaming helper integrates with Gemini Live via backend
 import { startLiveStreaming } from '../../utils/liveStreamer.js';
 import defaultLogger from '../../utils/logger.js';
-import { resolveBackendOrigin } from '../../services/backendConfig.js';
 
 // Use global logger if available, falling back to the imported logger or console
 const logger = globalThis.logger || defaultLogger || console;
-const API_BASE = resolveBackendOrigin();
 
 export class SalesWizardApp extends LitElement {
     static styles = css`
@@ -215,36 +213,38 @@ export class SalesWizardApp extends LitElement {
         // so it can be cleaned up in disconnectedCallback().
         this._stopVoiceAssistant = startListening(async transcript => {
             try {
-                const res = await fetch(`${API_BASE}/ask`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: transcript }),
-                });
-                const data = await res.json();
-                if (data.reply) {
-                    this.setResponse(data.reply);
-                    if (this.sessionId) {
-                        this.transcripts = [
-                            ...this.transcripts,
-                            { transcription: transcript, ai_response: data.reply },
-                        ];
-                        try {
-                            await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    transcription: transcript,
-                                    ai_response: data.reply,
-                                    notes: this.noteText,
-                                }),
-                            });
-                        } catch (err) {
-                            logger.error('Failed to post turn:', err);
-                        }
+                if (!window.electron?.assistantAsk) {
+                    throw new Error('assistantAsk IPC bridge unavailable');
+                }
+
+                const result = await window.electron.assistantAsk(transcript);
+                if (!result?.success) {
+                    throw new Error(result?.error || 'Assistant request failed');
+                }
+
+                const reply = result?.data?.reply?.trim?.() || '';
+                if (!reply) {
+                    return;
+                }
+
+                this.setResponse(reply);
+                if (this.sessionId) {
+                    this.transcripts = [
+                        ...this.transcripts,
+                        { transcription: transcript, ai_response: reply },
+                    ];
+                    try {
+                        await this.persistHistoryTurn({
+                            transcription: transcript,
+                            ai_response: reply,
+                            notes: this.noteText,
+                        });
+                    } catch (err) {
+                        logger.error('Failed to post turn:', err);
                     }
                 }
             } catch (err) {
-                logger.error('Voice assistant fetch failed:', err);
+                logger.error('Voice assistant request failed:', err);
             }
         });
 
@@ -428,11 +428,7 @@ export class SalesWizardApp extends LitElement {
         this.notes = [];
         this.noteText = '';
         try {
-            await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionStart: true, notes: '' }),
-            });
+            await this.persistHistoryTurn({ sessionStart: true, notes: '' });
         } catch (error) {
             logger.error('Failed to start session history:', error);
         }
@@ -498,13 +494,25 @@ export class SalesWizardApp extends LitElement {
         this.noteText = newNotes;
         if (!this.sessionId) return;
         try {
-            await fetch(`${API_BASE}/history/${this.sessionId}/turn`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notes: this.noteText }),
-            });
+            await this.persistHistoryTurn({ notes: this.noteText });
         } catch (error) {
             logger.error('Failed to save notes:', error);
+        }
+    }
+
+    async persistHistoryTurn(turn) {
+        if (!this.sessionId) return;
+        if (!window.electron?.historyAddTurn) {
+            throw new Error('historyAddTurn IPC bridge unavailable');
+        }
+
+        const result = await window.electron.historyAddTurn({
+            sessionId: this.sessionId,
+            turn,
+        });
+
+        if (!result?.success) {
+            throw new Error(result?.error || 'Failed to persist history turn');
         }
     }
 

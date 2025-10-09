@@ -1,8 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
-import { resolveBackendOrigin } from '../../services/backendConfig.js';
-
-const API_BASE = resolveBackendOrigin();
 
 export class HistoryView extends LitElement {
     static styles = css`
@@ -381,20 +378,24 @@ export class HistoryView extends LitElement {
         // Resize window for this view
         resizeLayout();
         const limit = localStorage.getItem('historySessionLimit');
-        if (limit) {
-            fetch(`${API_BASE}/history/limit`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ limit }),
-            }).catch(err => logger.error('Failed to apply history limit:', err));
+        if (limit && window.electron?.historySetLimit) {
+            window.electron.historySetLimit(limit).catch(err => logger.error('Failed to apply history limit:', err));
         }
     }
 
     async loadSessions() {
         try {
-        this.loading = true;
-        const response = await fetch(`${API_BASE}/history`);
-        this.sessions = await response.json();
+            this.loading = true;
+            if (window.electron?.historyList) {
+                const result = await window.electron.historyList();
+                if (result?.success) {
+                    this.sessions = Array.isArray(result.data) ? result.data : [];
+                } else {
+                    throw new Error(result?.error || 'Failed to load history');
+                }
+            } else {
+                this.sessions = [];
+            }
         } catch (error) {
             logger.error('Error loading conversation sessions:', error);
             this.sessions = [];
@@ -437,9 +438,15 @@ export class HistoryView extends LitElement {
     async fetchSession(sessionId) {
         try {
             this.loading = true;
-            const res = await fetch(`${API_BASE}/history/${sessionId}`);
-            const data = await res.json();
-            this.selectedSession = { ...data, notes: data.notes || '' };
+            if (window.electron?.historyGet) {
+                const result = await window.electron.historyGet(sessionId);
+                if (result?.success) {
+                    const data = result.data || {};
+                    this.selectedSession = { ...data, notes: data.notes || '' };
+                } else {
+                    throw new Error(result?.error || 'Failed to load session');
+                }
+            }
         } catch (error) {
             logger.error('Error loading session transcript:', error);
         } finally {
@@ -453,9 +460,15 @@ export class HistoryView extends LitElement {
 
     async handleClearHistory() {
         try {
-            await fetch(`${API_BASE}/history`, { method: 'DELETE' });
-            this.sessions = [];
-            this.selectedSession = null;
+            if (window.electron?.historyClear) {
+                const result = await window.electron.historyClear();
+                if (result?.success) {
+                    this.sessions = [];
+                    this.selectedSession = null;
+                } else {
+                    throw new Error(result?.error || 'Failed to clear history');
+                }
+            }
         } catch (error) {
             logger.error('Error clearing history:', error);
         }
