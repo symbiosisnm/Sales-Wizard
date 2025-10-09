@@ -12,7 +12,7 @@ const logger = globalThis.logger || defaultLogger || console;
  *
  * @param {Object} opts
  * @param {(text:string)=>void} opts.onResponse Called when model emits text
- * @param {(status:string)=>void} [opts.onStatus] Status updates from client
+ * @param {(status:object|string)=>void} [opts.onStatus] Status updates from client
  * @param {(err:string)=>void} [opts.onError] Error messages
  * @param {(level:number)=>void} [opts.onAudioLevel] Receives audio level 0-1
  * @returns {Promise<()=>void>} resolves to a stop function
@@ -40,7 +40,13 @@ export async function startLiveStreaming({
       logger.warn('Error handling text:', err);
     }
   };
-  client.onStatus = onStatus;
+  client.onStatus = status => {
+    try {
+      onStatus(status);
+    } catch (_e) {
+      /* empty */
+    }
+  };
   client.onError = onError;
 
   await client.connect();
@@ -49,6 +55,7 @@ export async function startLiveStreaming({
   let audioStream; let audioCleanup = () => {};
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    onStatus({ audio: 'capturing', message: 'Microphone streaming' });
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
     const source = audioCtx.createMediaStreamSource(audioStream);
 
@@ -83,6 +90,7 @@ export async function startLiveStreaming({
         audioCleanup = () => {
           node.disconnect();
           cleanup();
+          onStatus({ audio: 'idle', message: 'Microphone idle' });
         };
       } catch (err) {
         console.warn('AudioWorklet init failed, falling back to ScriptProcessor:', err);
@@ -106,6 +114,7 @@ export async function startLiveStreaming({
         audioCleanup = () => {
           processor.disconnect();
           cleanup();
+          onStatus({ audio: 'idle', message: 'Microphone idle' });
         };
       }
     } else {
@@ -130,10 +139,12 @@ export async function startLiveStreaming({
       audioCleanup = () => {
         processor.disconnect();
         cleanup();
+        onStatus({ audio: 'idle', message: 'Microphone idle' });
       };
     }
   } catch (err) {
     logger.warn('Audio streaming failed to initialise:', err);
+    onStatus({ audio: 'error', message: `Audio streaming failed to initialise: ${err?.message || err}` });
   }
 
   // Screen capture
@@ -171,13 +182,14 @@ export async function startLiveStreaming({
       screenStream = null;
     }
     cleanupDomNodes();
-    onStatus('Screen capture ended');
+    onStatus({ screen: 'idle', message: 'Screen capture ended' });
   };
 
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const track = screenStream.getVideoTracks()[0];
     track.onended = stopScreenCapture;
+    onStatus({ screen: 'sharing', message: 'Screen capture active' });
     const imageCapture = typeof ImageCapture === 'function' ? new ImageCapture(track) : null;
 
     const encodeBlobAndSend = async blob => {
@@ -356,6 +368,7 @@ export async function startLiveStreaming({
       : `Screen streaming failed to initialise: ${err?.message || err}`;
     logger.warn(msg, err);
     onError(msg);
+    onStatus({ screen: 'error', message: msg });
     stopScreenCapture();
   }
 

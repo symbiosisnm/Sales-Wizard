@@ -3,6 +3,7 @@ require('../src/utils/logger');
 const express = require('express');
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { WebSocketServer } = require('ws');
+const { Blob } = require('buffer');
 const historyStore = require('./historyStore');
 
 const app = express();

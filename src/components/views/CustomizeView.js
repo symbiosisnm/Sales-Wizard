@@ -632,7 +632,6 @@ export class CustomizeView extends LitElement {
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-            panicHide: isMac ? 'Cmd+Esc' : 'Ctrl+Esc',
             toggleMic: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
@@ -646,6 +645,9 @@ export class CustomizeView extends LitElement {
         if (savedKeybinds) {
             try {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...JSON.parse(savedKeybinds) };
+                if (this.keybinds.panicHide) {
+                    delete this.keybinds.panicHide;
+                }
             } catch (e) {
                 logger.error('Failed to parse saved keybinds:', e);
                 this.keybinds = this.getDefaultKeybinds();
@@ -707,11 +709,6 @@ export class CustomizeView extends LitElement {
                 key: 'toggleClickThrough',
                 name: 'Toggle Click-through Mode',
                 description: 'Enable/disable click-through functionality',
-            },
-            {
-                key: 'panicHide',
-                name: 'Panic Hide',
-                description: 'Hide overlay and stop capture',
             },
             {
                 key: 'toggleMic',

@@ -135,6 +135,34 @@ export class HistoryView extends LitElement {
             white-space: pre-wrap;
         }
 
+        .session-structured-notes {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .session-structured-note {
+            border: 1px solid var(--button-border);
+            border-radius: 6px;
+            padding: 10px;
+            background: var(--input-background);
+        }
+
+        .session-structured-note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 11px;
+            color: var(--description-color);
+        }
+
+        .session-structured-note-type {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 600;
+        }
+
         .back-header {
             display: flex;
             justify-content: space-between;
@@ -439,7 +467,18 @@ export class HistoryView extends LitElement {
             this.loading = true;
             const res = await fetch(`${API_BASE}/history/${sessionId}`);
             const data = await res.json();
-            this.selectedSession = { ...data, notes: data.notes || '' };
+            const structuredNotes = Array.isArray(data.notes) ? data.notes : [];
+            const manualNotes =
+                typeof data.manualNotes === 'string'
+                    ? data.manualNotes
+                    : typeof data.notes === 'string'
+                    ? data.notes
+                    : '';
+            this.selectedSession = {
+                ...data,
+                notes: structuredNotes,
+                manualNotes,
+            };
         } catch (error) {
             logger.error('Error loading session transcript:', error);
         } finally {
@@ -470,7 +509,8 @@ export class HistoryView extends LitElement {
                     sessionId: this.selectedSession.id,
                     history: this.selectedSession.conversationHistory || [],
                 },
-                notes: this.selectedSession.notes || '',
+                structuredNotes: this.selectedSession.notes || [],
+                manualNotes: this.selectedSession.manualNotes || '',
                 profile: this.selectedSession.profile || localStorage.getItem('selectedProfile') || '',
             });
             if (res?.success) {
@@ -595,7 +635,7 @@ export class HistoryView extends LitElement {
     renderConversationView() {
         if (!this.selectedSession) return html``;
 
-        const { conversationHistory, notes } = this.selectedSession;
+        const { conversationHistory, notes, manualNotes } = this.selectedSession;
 
         // Flatten the conversation turns into individual messages
         const messages = [];
@@ -653,11 +693,31 @@ export class HistoryView extends LitElement {
                 </div>
             </div>
             <div class="conversation-view">
-                ${notes
+                ${Array.isArray(notes) && notes.length
                     ? html`
                           <div class="session-notes">
-                              <div class="session-notes-title">Notes</div>
-                              <div class="session-notes-content">${notes}</div>
+                              <div class="session-notes-title">Structured Notes</div>
+                              <div class="session-structured-notes">
+                                  ${notes.map(
+                                      note => html`
+                                          <div class="session-structured-note">
+                                              <div class="session-structured-note-header">
+                                                  <span class="session-structured-note-type">${(note.type || 'auto').toUpperCase()}</span>
+                                                  <span>${this.formatTimestamp(note.timestamp)}</span>
+                                              </div>
+                                              <div class="session-notes-content">${note.text || ''}</div>
+                                          </div>
+                                      `
+                                  )}
+                              </div>
+                          </div>
+                      `
+                    : ''}
+                ${manualNotes
+                    ? html`
+                          <div class="session-notes">
+                              <div class="session-notes-title">Manual Notes</div>
+                              <div class="session-notes-content">${manualNotes}</div>
                           </div>
                       `
                     : ''}

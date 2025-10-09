@@ -1004,9 +1004,17 @@ const salesWizard = {
     initConversationStorage,
 
     // Content protection function
-    getContentProtection: () => {
-        const contentProtection = localStorage.getItem('contentProtection');
-        return contentProtection !== null ? contentProtection === 'true' : true;
+    getContentProtection: async () => {
+        try {
+            if (window.electron?.getContentProtection) {
+                return await window.electron.getContentProtection();
+            }
+        } catch (error) {
+            logger.error('Failed to read content protection preference:', error);
+        }
+
+        const legacySetting = localStorage.getItem('contentProtection');
+        return legacySetting === 'true';
     },
 
     // Platform detection
