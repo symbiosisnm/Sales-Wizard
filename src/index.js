@@ -6,7 +6,7 @@ require('./utils/logger');
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
-const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
+const { setupGeminiIpcHandlers, stopSystemAudioCapture, sendToRenderer } = require('./utils/gemini');
 const { registerSecureStoreIpc } = require('./utils/secureStore');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
 const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
@@ -46,14 +46,14 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-    stopMacOSAudioCapture();
+    stopSystemAudioCapture();
     if (process.platform !== 'darwin') {
         app.quit();
     }
 });
 
 app.on('before-quit', () => {
-    stopMacOSAudioCapture();
+    stopSystemAudioCapture();
 });
 
 app.on('activate', () => {
@@ -65,7 +65,7 @@ app.on('activate', () => {
 function setupGeneralIpcHandlers() {
     ipcMain.handle('quit-application', async () => {
         try {
-            stopMacOSAudioCapture();
+            stopSystemAudioCapture();
             app.quit();
             return { success: true };
         } catch (error) {
