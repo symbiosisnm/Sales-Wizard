@@ -1,5 +1,5 @@
 require('dotenv').config();
-require("../src/utils/logger");
+require('../src/utils/logger');
 const express = require('express');
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { WebSocketServer } = require('ws');
@@ -9,6 +9,69 @@ const historyStore = require('./historyStore');
 const app = express();
 app.use(express.json());
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+function isOriginAllowed(origin) {
+  if (!origin || allowedOrigins.length === 0) {
+    return true;
+  }
+  return allowedOrigins.includes(origin);
+}
+
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (origin && !isOriginAllowed(origin)) {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, AUTH_TOKEN');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
+
+function getConfiguredToken() {
+  return (process.env.AUTH_TOKEN || '').trim();
+}
+
+function extractAuthToken(req) {
+  const headerToken = (req.get('AUTH_TOKEN') || '').trim();
+  const queryToken = (req.query?.AUTH_TOKEN || req.query?.authToken || '').trim();
+  return headerToken || queryToken;
+}
+
+function authMiddleware(req, res, next) {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
+  const configuredToken = getConfiguredToken();
+  if (!configuredToken) {
+    logger.error('AUTH_TOKEN environment variable is not configured.');
+    return res.status(500).json({ error: 'Server misconfiguration' });
+  }
+
+  const providedToken = extractAuthToken(req);
+  if (providedToken !== configuredToken) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  return next();
+}
 
 // In-memory state for conversation history and context parameters
 const state = {
@@ -40,7 +103,7 @@ app.put('/context-params', (req, res) => {
   res.json({ success: true, data: state.contextParams });
 });
 
-app.post('/ask', async (req, res) => {
+app.post('/ask', authMiddleware, async (req, res) => {
   const prompt = req.body.prompt || '';
   try {
     const model = genai.getGenerativeModel({
@@ -57,7 +120,7 @@ app.post('/ask', async (req, res) => {
   }
 });
 
-app.post('/history/:sessionId/turn', (req, res) => {
+app.post('/history/:sessionId/turn', authMiddleware, (req, res) => {
   const { sessionId } = req.params;
   try {
     historyStore.appendTurn(sessionId, req.body || {});
@@ -69,7 +132,7 @@ app.post('/history/:sessionId/turn', (req, res) => {
 });
 
 // Clear all stored history sessions
-app.delete('/history', (_req, res) => {
+app.delete('/history', authMiddleware, (_req, res) => {
   try {
     historyStore.clearHistory();
     res.json({ ok: true });
@@ -79,7 +142,7 @@ app.delete('/history', (_req, res) => {
   }
 });
 
-app.get('/history', (req, res) => {
+app.get('/history', authMiddleware, (req, res) => {
   try {
     const sessions = historyStore.listSessions();
     res.json(sessions);
@@ -89,7 +152,7 @@ app.get('/history', (req, res) => {
   }
 });
 
-app.get('/history/:sessionId', (req, res) => {
+app.get('/history/:sessionId', authMiddleware, (req, res) => {
   try {
     const session = historyStore.getSession(req.params.sessionId);
     if (!session) {
@@ -103,7 +166,7 @@ app.get('/history/:sessionId', (req, res) => {
 });
 
 // Update maximum stored session count
-app.put('/history/limit', (req, res) => {
+app.put('/history/limit', authMiddleware, (req, res) => {
   try {
     historyStore.setMaxSessions(req.body?.limit);
     res.json({ ok: true, limit: req.body?.limit });
@@ -113,212 +176,80 @@ app.put('/history/limit', (req, res) => {
   }
 });
 
-const server = app.listen(process.env.PORT || 3001);
-
-// WebSocket endpoint for Gemini Live
-const wss = new WebSocketServer({ server, path: '/live' });
-wss.on('connection', (ws) => {
-  let liveSession = null;
-  let started = false;
-  let shuttingDown = false;
-
-  const now = () => new Date().toISOString();
-  const sendJSON = (payload) => {
-    try {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify(payload));
-      }
-    } catch (err) {
-      logger.error('Failed to send WS payload', err);
-    }
-  };
-
-  const sendStatus = (message, { terminal = false } = {}) =>
-    sendJSON({ type: 'status', message, terminal, ts: now() });
-  const sendError = (message, { terminal = false } = {}) =>
-    sendJSON({ type: 'error', message, terminal, ts: now() });
-  const sendText = (text) => sendJSON({ type: 'model_text', text });
-  const sendAudio = (data, mime) => sendJSON({ type: 'model_audio', data, mime });
-
-  const finalize = async (message, { sendTerminal = true } = {}) => {
-    if (shuttingDown) return;
-    if (sendTerminal) {
-      const terminalMessage = message || 'Session closed';
-      sendStatus(terminalMessage, { terminal: true });
-    }
-    shuttingDown = true;
-    try {
-      await liveSession?.close?.();
-    } catch (err) {
-      logger.error('Error closing live session', err);
-    }
-    try {
-      if (ws.readyState === ws.OPEN || ws.readyState === ws.CLOSING) {
-        ws.close();
-      }
-    } catch (err) {
-      logger.error('Error closing WebSocket', err);
-    }
-  };
-
-  const normalizeModalities = (modalities) => {
-    if (!Array.isArray(modalities) || modalities.length === 0) {
-      return [Modality.TEXT];
-    }
-    return modalities.map((mod) => {
-      if (typeof mod === 'string' && Modality[mod]) {
-        return Modality[mod];
-      }
-      return mod;
-    });
-  };
-
-  const forwardServerMessage = (message) => {
-    try {
-      const text = typeof message?.text === 'string' ? message.text : '';
-      if (text) {
-        sendText(text);
-      }
-
-      const parts = message?.serverContent?.modelTurn?.parts || [];
-      for (const part of parts) {
-        const inline = part?.inlineData;
-        if (inline?.mimeType?.startsWith('audio/') && inline.data) {
-          try {
-            let buffer;
-            if (typeof inline.data === 'string') {
-              buffer = Buffer.from(inline.data, 'base64');
-            } else if (inline.data instanceof Uint8Array || Buffer.isBuffer(inline.data)) {
-              buffer = Buffer.from(inline.data);
-            }
-            if (buffer && buffer.length) {
-              sendAudio(buffer.toString('base64'), inline.mimeType);
-            }
-          } catch (err) {
-            logger.error('Failed to forward audio chunk', err);
-          }
-        }
-      }
-    } catch (err) {
-      logger.error('Error forwarding Gemini message', err);
-    }
-  };
-
-  sendStatus('Connected to live gateway. Awaiting start command.');
-
-  ws.on('message', async (raw) => {
-    if (shuttingDown) return;
-    let msg;
-    try {
-      msg = JSON.parse(raw.toString());
-    } catch (err) {
-      logger.warn('Discarding invalid JSON payload', err);
-      sendError('Invalid JSON payload');
+function startWebSocketServer(serverInstance) {
+  const wssInstance = new WebSocketServer({ server: serverInstance, path: '/live' });
+  wssInstance.on('connection', async (ws, req) => {
+    const origin = req.headers?.origin;
+    if (origin && !isOriginAllowed(origin)) {
+      ws.close(1008, 'Origin not allowed');
       return;
     }
 
-    if (!started) {
-      if (msg?.type !== 'start') {
-        sendError('First message must be a start command', { terminal: true });
-        await finalize('Session terminated: start command missing');
-        return;
-      }
-
-      started = true;
-      const model = typeof msg.model === 'string' && msg.model.trim() ? msg.model.trim() : 'gemini-2.0-flash-live-001';
-      const systemInstruction = msg.systemInstruction || buildSystemInstruction();
-      const responseModalities = normalizeModalities(msg.responseModalities);
-
-      sendStatus(`Starting Gemini live session on ${model}...`);
-
-      try {
-        liveSession = await genai.live.connect({
-          model,
-          config: {
-            responseModalities,
-            systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-          },
-          httpOptions: { apiVersion: 'v1alpha' },
-          callbacks: {
-            onopen: () => sendStatus('Gemini live session established'),
-            onmessage: forwardServerMessage,
-            onerror: (err) => {
-              logger.error('Gemini live error', err);
-              sendError(`Gemini live error: ${err?.message || err}`);
-            },
-            onclose: (evt) => {
-              const reason = evt?.reason ? `Gemini live closed: ${evt.reason}` : 'Gemini live closed';
-              finalize(reason).catch((closeErr) => logger.error('Error during live finalize', closeErr));
-            },
-          },
-        });
-
-        sendStatus(`Live session ready on model ${model}`);
-      } catch (err) {
-        logger.error('Failed to start live session', err);
-        sendError('Failed to start live session', { terminal: true });
-        await finalize('Session terminated: Gemini live start failure');
-      }
+    const configuredToken = getConfiguredToken();
+    if (!configuredToken) {
+      logger.error('AUTH_TOKEN environment variable is not configured.');
+      ws.close(1011, 'Server misconfiguration');
       return;
     }
 
-    if (!liveSession) {
-      sendError('Live session not initialized');
+    const headerToken = (req.headers?.auth_token || req.headers?.['auth-token'] || '').trim();
+    const requestUrl = new URL(req.url, 'http://localhost');
+    const queryToken =
+      (requestUrl.searchParams.get('AUTH_TOKEN') || requestUrl.searchParams.get('authToken') || '').trim();
+    const providedToken = headerToken || queryToken;
+
+    if (providedToken !== configuredToken) {
+      ws.close(1008, 'Unauthorized');
       return;
     }
 
-    switch (msg.type) {
-      case 'text':
-        if (typeof msg.text === 'string' && msg.text.trim()) {
-          try {
-            await liveSession.sendClientContent({
-              turns: [{ parts: [{ text: msg.text }] }],
-            });
-          } catch (err) {
-            logger.error('Failed to forward text input', err);
-            sendError('Failed to send text to Gemini');
-          }
+    try {
+      const session = await genai.live.connect({
+        model: 'gemini-live-2.5-flash-preview',
+        config: { response_modalities: [Modality.TEXT], system_instruction: buildSystemInstruction() }
+      });
+
+      // Forward Gemini replies back to the client
+      (async () => {
+        for await (const response of session.receive()) {
+          ws.send(JSON.stringify({ text: response.text || '' }));
         }
-        break;
-      case 'audio':
-        if (typeof msg.data === 'string' && msg.data) {
-          try {
-            const bytes = Buffer.from(msg.data, 'base64');
-            const blob = new Blob([bytes], { type: msg.mime || 'audio/pcm;rate=16000' });
-            liveSession.sendRealtimeInput({ media: blob });
-          } catch (err) {
-            logger.error('Failed to forward audio input', err);
-            sendError('Failed to send audio to Gemini');
-          }
+      })();
+
+      ws.on('message', async (msg) => {
+        const data = JSON.parse(msg);
+        if (data.audio) {
+          const buf = Buffer.from(data.audio, 'base64');
+          await session.send_realtime_input({
+            audio: { data: buf, mime_type: data.mimeType || 'audio/pcm;rate=16000' }
+          });
+        } else if (data.image) {
+          const buf = Buffer.from(data.image, 'base64');
+          await session.send_realtime_input({
+            image: { data: buf, mime_type: data.mimeType || 'image/jpeg' }
+          });
         }
-        break;
-      case 'image':
-        if (typeof msg.data === 'string' && msg.data) {
-          try {
-            const bytes = Buffer.from(msg.data, 'base64');
-            const blob = new Blob([bytes], { type: msg.mime || 'image/jpeg' });
-            liveSession.sendRealtimeInput({ media: blob });
-          } catch (err) {
-            logger.error('Failed to forward image input', err);
-            sendError('Failed to send image to Gemini');
-          }
-        }
-        break;
-      case 'end':
-        await finalize('Session ended by client');
-        break;
-      default:
-        sendError(`Unsupported message type: ${msg.type}`);
-        break;
+      });
+
+      ws.on('close', () => session.close());
+    } catch (err) {
+      logger.error('Failed to initialize Gemini Live session:', err);
+      ws.close(1011, 'Gemini Live initialization failed');
     }
   });
 
-  ws.on('close', async () => {
-    shuttingDown = true;
-    try {
-      await liveSession?.close?.();
-    } catch (err) {
-      logger.error('Error closing live session after socket close', err);
-    }
-  });
-});
+  return wssInstance;
+}
+
+function startServer({ port } = {}) {
+  const listenPort = port ?? process.env.PORT ?? 3001;
+  const serverInstance = app.listen(listenPort);
+  const wssInstance = startWebSocketServer(serverInstance);
+  return { server: serverInstance, wss: wssInstance };
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { app, startServer, state };
