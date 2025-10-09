@@ -1,7 +1,8 @@
+const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
+const ipcUtils = require('./ipcUtils');
 
 const SAMPLE_RATE = 24000;
 const OUTPUT_CHANNELS = 1;
@@ -27,7 +28,7 @@ function killExistingSystemAudioDump() {
     }
 
     return new Promise(resolve => {
-        const killProc = spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
+        const killProc = childProcess.spawn('pkill', ['-f', 'SystemAudioDump'], { stdio: 'ignore' });
         killProc.on('close', () => resolve());
         killProc.on('error', () => resolve());
         setTimeout(() => {
@@ -68,7 +69,7 @@ function resolveFfmpegPath() {
 async function startMacOSAudioCapture(geminiSessionRef) {
     if (process.platform !== 'darwin') return false;
 
-    await killExistingSystemAudioDump();
+    const { app } = require('electron');
 
     let systemAudioPath;
     try {
@@ -82,13 +83,22 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
     }
 
-    const env = { PROCESS_NAME: 'AudioService', APP_NAME: 'System Audio Service' };
-    return spawnSystemAudioProcess(systemAudioPath, [], geminiSessionRef, {
-        label: 'SystemAudioDump',
-        inputChannels: 2,
-        env,
-    });
-}
+    try {
+        await fs.promises.access(systemAudioPath, fs.constants.X_OK);
+    } catch (err) {
+        const message =
+            err.code === 'ENOENT'
+                ? 'Error: SystemAudioDump binary not found. Install it to enable system audio capture.'
+                : 'Error: SystemAudioDump binary is not executable. Check permissions.';
+        logger.error('SystemAudioDump binary validation failed:', err);
+        ipcUtils.sendToRenderer('update-status', message);
+        return false;
+    }
+
+    const spawnOptions = {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PROCESS_NAME: 'AudioService', APP_NAME: 'System Audio Service' },
+    };
 
 async function startWindowsAudioCapture(geminiSessionRef) {
     const ffmpegPath = resolveFfmpegPath();
@@ -131,46 +141,17 @@ async function startLinuxAudioCapture(geminiSessionRef, options = {}) {
         order.push('pulse', 'pipewire');
     }
 
-    const tried = new Set();
-    for (const backend of order) {
-        if (tried.has(backend)) continue;
-        tried.add(backend);
-
-        const source = backend === 'pipewire' ? defaultPipewireSource : defaultPulseSource;
-        const args = [
-            '-f',
-            backend === 'pipewire' ? 'pipewire' : 'pulse',
-            '-i',
-            source,
-            '-ac',
-            '1',
-            '-ar',
-            String(SAMPLE_RATE),
-            '-f',
-            's16le',
-            'pipe:1',
-        ];
-
-        const label = backend === 'pipewire' ? 'ffmpeg-pipewire' : 'ffmpeg-pulseaudio';
-        const success = await spawnSystemAudioProcess(ffmpegPath, args, geminiSessionRef, {
-            label,
-            inputChannels: 1,
-        });
-        if (success) {
-            return true;
-        }
+    try {
+        systemAudioProc = childProcess.spawn(systemAudioPath, [], spawnOptions);
+    } catch (err) {
+        logger.error('Failed to start SystemAudioDump:', err);
+        ipcUtils.sendToRenderer('update-status', `Error starting system audio capture: ${err.message}`);
+        return false;
     }
 
-    logger.warn('Failed to start Linux system audio capture via ffmpeg');
-    return false;
-}
-
-async function startSystemAudioCapture(geminiSessionRef, options = {}) {
-    await stopSystemAudioCapture();
-    resetVadState();
-
-    if (!geminiSessionRef || !geminiSessionRef.current) {
-        logger.warn('Cannot start system audio capture without an active Gemini session');
+    if (!systemAudioProc?.pid) {
+        logger.error('Failed to start SystemAudioDump');
+        ipcUtils.sendToRenderer('update-status', 'Error starting system audio capture: SystemAudioDump failed to launch.');
         return false;
     }
 
@@ -297,31 +278,25 @@ function spawnSystemAudioProcess(executable, args, geminiSessionRef, { label, in
     });
 }
 
-function createChunkHandler(geminiSessionRef, inputChannels) {
-    const inputChunkBytes = SAMPLE_RATE * inputChannels * BYTES_PER_SAMPLE * CHUNK_DURATION_SECONDS;
-    let buffer = Buffer.alloc(0);
+    systemAudioProc.stderr.on('data', data => {
+        const stderrOutput = data.toString();
+        logger.error('SystemAudioDump stderr:', stderrOutput);
+        ipcUtils.sendToRenderer('update-status', `SystemAudioDump stderr: ${stderrOutput.trim()}`);
+    });
 
-    return data => {
-        buffer = Buffer.concat([buffer, data]);
-        while (buffer.length >= inputChunkBytes) {
-            let chunk = buffer.slice(0, inputChunkBytes);
-            buffer = buffer.slice(inputChunkBytes);
-
-            if (inputChannels !== OUTPUT_CHANNELS) {
-                chunk = downmixToMono(chunk, inputChannels);
-            }
-
-            const base64Data = chunk.toString('base64');
-            sendAudioToGemini(base64Data, geminiSessionRef);
-
-            if (process.env.DEBUG_AUDIO) {
-                try {
-                    saveDebugAudio(chunk, 'system_audio');
-                } catch (debugErr) {
-                    logger.warn('Failed to save debug audio chunk', debugErr);
-                }
-            }
+    systemAudioProc.on('close', (code, signal) => {
+        systemAudioProc = null;
+        if (code !== 0) {
+            const reason = signal ? ` (signal: ${signal})` : '';
+            ipcUtils.sendToRenderer('update-status', `SystemAudioDump exited with code ${code}${reason}`);
         }
+    });
+
+    systemAudioProc.on('error', err => {
+        logger.error('SystemAudioDump process error:', err);
+        ipcUtils.sendToRenderer('update-status', `SystemAudioDump process error: ${err.message}`);
+        systemAudioProc = null;
+    });
 
         const maxBuffer = SAMPLE_RATE * inputChannels * BYTES_PER_SAMPLE;
         if (buffer.length > maxBuffer) {
