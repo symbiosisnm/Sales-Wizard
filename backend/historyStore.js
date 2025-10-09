@@ -57,10 +57,12 @@ function normalizeStructuredNotes(notes) {
 function appendTurn(sessionId, data) {
     const history = loadHistory();
     let session = history.sessions[sessionId];
+    const eventTimestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
+
     if (!session) {
         session = {
             id: sessionId,
-            timestamp: data.timestamp || Date.now(),
+            timestamp: eventTimestamp,
             conversationHistory: [],
             notes: normalizeStructuredNotes(data.notes) || [],
             manualNotes:
@@ -90,13 +92,19 @@ function appendTurn(sessionId, data) {
         session.manualNotes = data.notes;
     }
 
-    if (typeof data.manualNotes === 'string') {
-        session.manualNotes = data.manualNotes;
+    session.timestamp = eventTimestamp;
+
+    if (typeof data.notes === 'string') {
+        session.notes = data.notes;
+    }
+
+    if (data.clearTranscripts) {
+        session.conversationHistory = [];
     }
 
     if (!data.sessionStart && (data.transcription || data.ai_response)) {
         session.conversationHistory.push({
-            timestamp: data.timestamp || Date.now(),
+            timestamp: eventTimestamp,
             transcription: data.transcription || '',
             ai_response: data.ai_response || '',
         });

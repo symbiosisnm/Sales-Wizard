@@ -54,3 +54,17 @@ test('Legacy string notes update manual notes field', () => {
     session = historyStore.getSession(sessionId);
     assert.strictEqual(session.manualNotes, 'New note');
 });
+
+test('clearTranscripts removes existing conversation history', () => {
+    const sessionId = 'clear-transcripts';
+    historyStore.appendTurn(sessionId, { sessionStart: true });
+    historyStore.appendTurn(sessionId, { transcription: 'Hi', ai_response: 'Hello', timestamp: 1 });
+    historyStore.appendTurn(sessionId, { transcription: 'How are you?', ai_response: 'Great!', timestamp: 2 });
+    let session = historyStore.getSession(sessionId);
+    assert.strictEqual(session.conversationHistory.length, 2);
+
+    historyStore.appendTurn(sessionId, { clearTranscripts: true, notes: '', timestamp: 3 });
+    session = historyStore.getSession(sessionId);
+    assert.strictEqual(session.conversationHistory.length, 0);
+    assert.strictEqual(session.timestamp, 3);
+});

@@ -1,4 +1,7 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import defaultLogger from '../../utils/logger.js';
+
+const logger = globalThis.logger || defaultLogger || console;
 
 export class SidePanel extends LitElement {
     static styles = css`
@@ -37,21 +40,52 @@ export class SidePanel extends LitElement {
             gap: 24px;
             background: var(--panel-surface-background, rgba(255, 255, 255, 0.02));
             backdrop-filter: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        .section-title {
-            font-size: 13px;
+        .transcripts-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .transcripts-title {
+            font-size: 16px;
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 12px;
-            color: var(--subtle-text-color, rgba(255, 255, 255, 0.7));
         }
 
-        .transcript-item:not(:last-child) {
-            margin-bottom: 16px;
+        .transcripts-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .transcript-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .transcript-item {
             padding-bottom: 12px;
             border-bottom: 1px solid var(--glass-border, var(--border-color));
+        }
+
+        .transcript-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: var(--muted-text-color, rgba(255, 255, 255, 0.6));
+            margin-bottom: 6px;
         }
 
         .transcription,
@@ -61,10 +95,17 @@ export class SidePanel extends LitElement {
             line-height: 1.4;
         }
 
-        .structured-notes-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
+        .empty-transcript {
+            font-size: 14px;
+            color: var(--muted-text-color, rgba(255, 255, 255, 0.6));
+        }
+
+        .notes {
+            flex: 0 0 auto;
+            border-top: 1px solid var(--glass-border, var(--border-color));
+            padding: var(--main-content-padding);
+            background: var(--panel-footer-background, rgba(255, 255, 255, 0.04));
+            backdrop-filter: inherit;
         }
 
         .structured-note {
@@ -108,54 +149,33 @@ export class SidePanel extends LitElement {
             gap: 8px;
         }
 
-        .note-button {
-            background: var(--button-background, rgba(255, 255, 255, 0.08));
-            color: inherit;
-            border: 1px solid var(--glass-border, var(--border-color));
-            padding: 4px 10px;
+        .action-button,
+        .save-button {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--glass-border, var(--button-border));
+            padding: 4px 8px;
             border-radius: 4px;
             font-size: 12px;
             cursor: pointer;
             transition: background 0.15s ease;
         }
 
-        .note-button:hover {
-            background: var(--hover-background, rgba(255, 255, 255, 0.16));
+        .action-button:hover,
+        .save-button:hover {
+            background: var(--hover-background);
         }
 
-        .note-button.primary {
-            background: var(--accent-color, rgba(66, 133, 244, 0.24));
-            border-color: var(--accent-color, rgba(66, 133, 244, 0.4));
+        .action-button.danger {
+            color: var(--destructive-text-color, #ff6b6b);
+            border-color: var(--destructive-border-color, rgba(255, 107, 107, 0.6));
         }
 
-        .note-button.destructive {
-            color: var(--danger-color, #ff6b6b);
-            border-color: rgba(255, 107, 107, 0.4);
-        }
-
-        .note-editor {
-            width: 100%;
-            min-height: 80px;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid var(--glass-border, var(--border-color));
-            background: var(--panel-input-background, var(--input-background));
-            color: inherit;
-            font-size: 14px;
-            font-family: inherit;
-            resize: vertical;
-        }
-
-        .note-editor:focus {
-            outline: none;
-            border-color: var(--focus-border-color);
-            box-shadow: 0 0 0 2px var(--focus-box-shadow);
-        }
-
-        .note-type-select {
-            background: var(--button-background, rgba(255, 255, 255, 0.08));
-            color: inherit;
-            border: 1px solid var(--glass-border, var(--border-color));
+        .format-select {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--glass-border, var(--button-border));
+            padding: 4px 6px;
             border-radius: 4px;
             font-size: 12px;
             padding: 4px 6px;
@@ -266,8 +286,21 @@ export class SidePanel extends LitElement {
         );
     }
 
-    _onManualNotesChange(e) {
-        this.manualNotes = e.target.value;
+    formatTimestamp(timestamp) {
+        if (!timestamp) return 'Unknown time';
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return 'Unknown time';
+        return date.toLocaleString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            month: 'short',
+            day: 'numeric',
+        });
+    }
+
+    _onNotesChange(e) {
+        this.notes = e.target.value;
         this.dispatchEvent(
             new CustomEvent('manual-notes-change', {
                 detail: { value: this.manualNotes },
@@ -305,147 +338,59 @@ export class SidePanel extends LitElement {
         }
     }
 
-    _formatTimestamp(timestamp) {
-        if (typeof timestamp !== 'number') return '—';
-        try {
-            return new Date(timestamp).toLocaleString();
-        } catch {
-            return '—';
-        }
+    _onCopyTranscript() {
+        this.dispatchEvent(
+            new CustomEvent('copy-transcript', {
+                bubbles: true,
+                composed: true,
+            })
+        );
     }
 
-    _resolveNoteId(note, index) {
-        if (note?.id) return note.id;
-        const base = typeof note?.timestamp === 'number' ? note.timestamp : Date.now();
-        return `${base}-${index}`;
-    }
-
-    _startEdit(note, index) {
-        const id = this._resolveNoteId(note, index);
-        this._editingNoteId = id;
-        this._draftNote = {
-            id,
-            text: note?.text || '',
-            type: note?.type || 'auto',
-            timestamp: typeof note?.timestamp === 'number' ? note.timestamp : Date.now(),
-        };
-    }
-
-    _cancelEdit() {
-        this._editingNoteId = null;
-        this._draftNote = null;
-    }
-
-    _onDraftTextChange(e) {
-        if (!this._draftNote) return;
-        this._draftNote = { ...this._draftNote, text: e.target.value };
-    }
-
-    _onDraftTypeChange(e) {
-        if (!this._draftNote) return;
-        this._draftNote = { ...this._draftNote, type: e.target.value };
-    }
-
-    _saveDraft(id) {
-        if (!this._draftNote || id !== this._editingNoteId) return;
-        const text = (this._draftNote.text || '').trim();
-        if (!text) {
-            this._deleteNote(id);
-            return;
-        }
-        const updatedNotes = this.structuredNotes.map((note, index) => {
-            const noteId = this._resolveNoteId(note, index);
-            if (noteId !== id) return note;
-            return {
-                ...note,
-                text,
-                type: this._draftNote.type || 'auto',
-                timestamp:
-                    typeof this._draftNote.timestamp === 'number'
-                        ? this._draftNote.timestamp
-                        : note.timestamp || Date.now(),
-            };
-        });
-        this.structuredNotes = updatedNotes;
-        this._dispatchStructuredNotes(updatedNotes);
-        this._cancelEdit();
-    }
-
-    _deleteNote(id) {
-        const updatedNotes = this.structuredNotes.filter((note, index) => this._resolveNoteId(note, index) !== id);
-        this.structuredNotes = updatedNotes;
-        this._dispatchStructuredNotes(updatedNotes);
-        if (this._editingNoteId === id) {
-            this._cancelEdit();
-        }
-    }
-
-    _renderStructuredNote(note, index) {
-        const id = this._resolveNoteId(note, index);
-        const isEditing = this._editingNoteId === id;
-        const displayText = isEditing ? this._draftNote?.text || '' : note?.text || '';
-        const displayType = (isEditing ? this._draftNote?.type : note?.type) || 'auto';
-        const timestamp = typeof note?.timestamp === 'number' ? note.timestamp : Date.now();
-
-        return html`
-            <div class="structured-note">
-                <div class="note-header">
-                    <span class="note-type">${displayType}</span>
-                    <span class="note-timestamp">${this._formatTimestamp(timestamp)}</span>
-                </div>
-                ${isEditing
-                    ? html`
-                          <textarea
-                              class="note-editor"
-                              .value=${displayText}
-                              @input=${this._onDraftTextChange}
-                          ></textarea>
-                          <div class="note-edit-actions">
-                              <select class="note-type-select" .value=${displayType} @change=${this._onDraftTypeChange}>
-                                  <option value="auto">Auto</option>
-                                  <option value="manual">Manual</option>
-                              </select>
-                              <div class="note-actions">
-                                  <button class="note-button primary" @click=${() => this._saveDraft(id)}>Save</button>
-                                  <button class="note-button" @click=${this._cancelEdit}>Cancel</button>
-                              </div>
-                          </div>
-                      `
-                    : html`
-                          <div class="note-text">${displayText}</div>
-                          <div class="note-actions">
-                              <button class="note-button" @click=${() => this._startEdit(note, index)}>Edit</button>
-                              <button class="note-button destructive" @click=${() => this._deleteNote(id)}>Delete</button>
-                          </div>
-                      `}
-            </div>
-        `;
+    _onClearSessionData() {
+        this.dispatchEvent(
+            new CustomEvent('clear-session-data', {
+                bubbles: true,
+                composed: true,
+            })
+        );
     }
 
     render() {
         const notes = Array.isArray(this.structuredNotes) ? this.structuredNotes : [];
         return html`
-            <div class="content">
-                <div class="transcript-section">
-                    <div class="section-title">Conversation</div>
+            <div class="transcripts">
+                <div class="transcripts-header">
+                    <div class="transcripts-title">Transcript</div>
+                    <div class="transcripts-actions">
+                        <button class="action-button" type="button" @click=${() => this._onCopyTranscript()}>
+                            Copy transcript
+                        </button>
+                        <button
+                            class="action-button danger"
+                            type="button"
+                            @click=${() => this._onClearSessionData()}
+                        >
+                            Clear notes & transcript
+                        </button>
+                    </div>
+                </div>
+                <div class="transcript-list">
                     ${this.transcripts.length
                         ? this.transcripts.map(
                               item => html`
                                   <div class="transcript-item">
-                                      <div class="transcription">${item.transcription}</div>
-                                      <div class="ai-response">${item.ai_response}</div>
+                                      <div class="timestamp">${this.formatTimestamp(item.timestamp)}</div>
+                                      ${item.transcription
+                                          ? html`<div class="transcription">${item.transcription}</div>`
+                                          : null}
+                                      ${item.ai_response
+                                          ? html`<div class="ai-response">${item.ai_response}</div>`
+                                          : null}
                                   </div>
                               `
                           )
-                        : html`<div class="empty-state">No conversation turns yet</div>`}
-                </div>
-                <div class="structured-notes-section">
-                    <div class="section-title">Structured Notes</div>
-                    <div class="structured-notes-list">
-                        ${notes.length
-                            ? notes.map((note, index) => this._renderStructuredNote(note, index))
-                            : html`<div class="empty-state">No structured notes yet</div>`}
-                    </div>
+                        : html`<div class="empty-transcript">No transcript captured yet.</div>`}
                 </div>
             </div>
             <div class="manual-notes">
