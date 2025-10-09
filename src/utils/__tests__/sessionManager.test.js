@@ -26,17 +26,32 @@ test('exportSession generates JSON blob with metadata', async () => {
                     transcription: 'hello',
                     ai_response: 'hi',
                 },
+                {
+                    timestamp: 60000,
+                    transcription: 'bye',
+                    ai_response: 'see ya',
+                },
             ],
         },
-        notes: 'some notes',
+        structuredNotes: [
+            { text: 'auto note', type: 'auto', timestamp: 1 },
+            { text: 'manual note', type: 'manual', timestamp: 2 },
+        ],
+        manualNotes: 'some manual notes',
         profile: 'interview',
     });
     assert.strictEqual(filename, 'session-abc.json');
     const text = await blob.text();
     const data = JSON.parse(text);
-    assert.strictEqual(data.notes, 'some notes');
+    assert.strictEqual(data.notes.length, 2);
+    assert.strictEqual(data.notes[0].text, 'auto note');
+    assert.strictEqual(data.manualNotes, 'some manual notes');
     assert.strictEqual(data.metadata.profile, 'interview');
-    assert.strictEqual(data.conversation.length, 1);
+    assert.strictEqual(data.conversation.length, 2);
+    assert.strictEqual(data.metadata.turnCount, 2);
+    assert.strictEqual(data.metadata.startedAt, new Date(0).toISOString());
+    assert.strictEqual(data.metadata.endedAt, new Date(60000).toISOString());
+    assert.ok(data.metadata.exportedAt);
 });
 
 test('exportSession generates Markdown blob', async () => {
@@ -52,11 +67,14 @@ test('exportSession generates Markdown blob', async () => {
                 },
             ],
         },
-        notes: 'note',
+        structuredNotes: [{ text: 'structured', type: 'auto', timestamp: 0 }],
+        manualNotes: 'manual note',
         profile: 'interview',
     });
     const text = await blob.text();
     assert.ok(text.includes('# Session abc'));
-    assert.ok(text.includes('note'));
+    assert.ok(text.includes('structured'));
+    assert.ok(text.includes('manual note'));
     assert.ok(text.includes('hello'));
+    assert.ok(text.includes('Turns: 1'));
 });

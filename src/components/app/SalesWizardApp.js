@@ -7,7 +7,7 @@ import '../views/HistoryView.js';
 import '../views/AssistantView.js';
 import '../views/OnboardingView.js';
 import '../views/AdvancedView.js';
-import '../views/SidePanel.js';
+import './SidePanel.js';
 
 // Voice assistant helper provides speech recognition via the Web Speech API.
 // It exports a startListening() function that returns a stop function.
@@ -131,6 +131,12 @@ export class SalesWizardApp extends LitElement {
     static properties = {
         currentView: { type: String },
         statusText: { type: String },
+        connectionState: { type: String },
+        audioState: { type: String },
+        screenState: { type: String },
+        connectionMessage: { type: String },
+        audioMessage: { type: String },
+        screenMessage: { type: String },
         startTime: { type: Number },
         isRecording: { type: Boolean },
         sessionActive: { type: Boolean },
@@ -145,7 +151,7 @@ export class SalesWizardApp extends LitElement {
         sessionId: { type: String },
         transcripts: { type: Array },
         notes: { type: Array },
-        noteText: { type: String },
+        manualNotes: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -157,6 +163,12 @@ export class SalesWizardApp extends LitElement {
         super();
         this.currentView = localStorage.getItem('onboardingCompleted') ? 'main' : 'onboarding';
         this.statusText = '';
+        this.connectionState = 'disconnected';
+        this.audioState = 'idle';
+        this.screenState = 'idle';
+        this.connectionMessage = 'WebSocket disconnected';
+        this.audioMessage = 'Microphone idle';
+        this.screenMessage = 'Screen capture idle';
         this.startTime = null;
         this.isRecording = false;
         this.sessionActive = false;
@@ -176,8 +188,9 @@ export class SalesWizardApp extends LitElement {
         this.sessionId = null;
         this.transcripts = [];
         this.notes = [];
-        this.noteText = '';
+        this.manualNotes = '';
         this.audioLevel = 0;
+        this._saveConversationTurnHandler = null;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -197,9 +210,23 @@ export class SalesWizardApp extends LitElement {
             this._clickThroughHandler = (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
             };
+            this._saveConversationTurnHandler = (_, payload) => {
+                if (!payload) {
+                    return;
+                }
+
+                const { fullHistory, turn } = payload;
+                if (Array.isArray(fullHistory)) {
+                    this.transcripts = fullHistory.map(item => ({ ...item }));
+                } else if (turn && typeof turn === 'object') {
+                    this.transcripts = [...this.transcripts, { ...turn }];
+                }
+                this.requestUpdate();
+            };
             window.electron.onUpdateResponse?.(this._updateResponseHandler);
             window.electron.onUpdateStatus?.(this._updateStatusHandler);
             window.electron.onClickThroughToggled?.(this._clickThroughHandler);
+            window.electron.onSaveConversationTurn?.(this._saveConversationTurnHandler);
         }
 
         // Start the voice assistant to listen for spoken questions and
@@ -262,7 +289,17 @@ export class SalesWizardApp extends LitElement {
             },
             onNote: note => {
                 if (note) {
-                    this.notes = [...this.notes, note];
+                    const normalizedNote = {
+                        ...note,
+                        type: note.type || 'auto',
+                        text: typeof note.text === 'string' ? note.text : '',
+                        timestamp:
+                            typeof note.timestamp === 'number'
+                                ? note.timestamp
+                                : Date.now(),
+                    };
+                    this.notes = [...this.notes, normalizedNote];
+                    this.persistNotes();
                     this.requestUpdate();
                 }
             },
@@ -293,19 +330,222 @@ export class SalesWizardApp extends LitElement {
             window.electron.removeUpdateResponseListener?.(this._updateResponseHandler);
             window.electron.removeUpdateStatusListener?.(this._updateStatusHandler);
             window.electron.removeClickThroughToggledListener?.(this._clickThroughHandler);
+            window.electron.removeSaveConversationTurnListener?.(this._saveConversationTurnHandler);
         }
     }
 
-    setStatus(text) {
-        this.statusText = text;
+    setStatus(status) {
+        const normalized = this._normalizeStatusPayload(status);
+        const messageForText =
+            normalized.message ||
+            normalized.connection?.message ||
+            normalized.audio?.message ||
+            normalized.screen?.message ||
+            (typeof status === 'string' ? status : '');
 
-        // Mark response as complete when we get certain status messages
-        if (text.includes('Ready') || text.includes('Listening') || text.includes('Error')) {
-            this._currentResponseIsComplete = true;
-            logger.info('[setStatus] Marked current response as complete');
-            const last = this.responses?.length ? this.responses[this.responses.length - 1] : null;
-            if (last) this.maybeSpeak(last);
+        if (normalized.connection) {
+            const { state, message } = normalized.connection;
+            if (state) this.connectionState = state;
+            if (message) this.connectionMessage = message;
         }
+
+        if (normalized.audio) {
+            const { state, message } = normalized.audio;
+            if (state) this.audioState = state;
+            if (message) this.audioMessage = message;
+        }
+
+        if (normalized.screen) {
+            const { state, message } = normalized.screen;
+            if (state) this.screenState = state;
+            if (message) this.screenMessage = message;
+        }
+
+        if (messageForText) {
+            this.statusText = messageForText;
+
+            // Mark response as complete when we get certain status messages
+            if (
+                messageForText.includes('Ready') ||
+                messageForText.includes('Listening') ||
+                messageForText.includes('Error')
+            ) {
+                this._currentResponseIsComplete = true;
+                logger.info('[setStatus] Marked current response as complete');
+                const last = this.responses?.length ? this.responses[this.responses.length - 1] : null;
+                if (last) this.maybeSpeak(last);
+            }
+        }
+    }
+
+    _normalizeStatusPayload(status) {
+        const normalized = {
+            message: '',
+            connection: null,
+            audio: null,
+            screen: null,
+        };
+
+        if (status && typeof status === 'object') {
+            const baseMessage = this._extractMessage(status);
+            normalized.message = baseMessage;
+
+            if ('connection' in status || status.type === 'connection') {
+                normalized.connection = this._coerceState('connection', status.connection ?? status.state ?? status.value, baseMessage || status.message || status.msg);
+            }
+
+            if ('audio' in status || status.type === 'audio') {
+                normalized.audio = this._coerceState('audio', status.audio ?? status.state ?? status.value, baseMessage || status.message || status.msg);
+            }
+
+            if ('screen' in status || status.type === 'screen') {
+                normalized.screen = this._coerceState('screen', status.screen ?? status.state ?? status.value, baseMessage || status.message || status.msg);
+            }
+
+            if (!normalized.connection && status.states?.connection) {
+                normalized.connection = this._coerceState('connection', status.states.connection, baseMessage);
+            }
+
+            if (!normalized.audio && status.states?.audio) {
+                normalized.audio = this._coerceState('audio', status.states.audio, baseMessage);
+            }
+
+            if (!normalized.screen && status.states?.screen) {
+                normalized.screen = this._coerceState('screen', status.states.screen, baseMessage);
+            }
+
+            if (!normalized.connection && typeof status.connection === 'object') {
+                normalized.connection = this._coerceState('connection', status.connection?.state ?? status.connection?.value, status.connection?.message ?? baseMessage);
+            }
+            if (!normalized.audio && typeof status.audio === 'object') {
+                normalized.audio = this._coerceState('audio', status.audio?.state ?? status.audio?.value, status.audio?.message ?? baseMessage);
+            }
+            if (!normalized.screen && typeof status.screen === 'object') {
+                normalized.screen = this._coerceState('screen', status.screen?.state ?? status.screen?.value, status.screen?.message ?? baseMessage);
+            }
+
+            return normalized;
+        }
+
+        if (typeof status === 'string') {
+            normalized.message = status;
+            const connectionState = this._inferStateFromMessage('connection', status);
+            if (connectionState) normalized.connection = { state: connectionState, message: status };
+            const audioState = this._inferStateFromMessage('audio', status);
+            if (audioState) normalized.audio = { state: audioState, message: status };
+            const screenState = this._inferStateFromMessage('screen', status);
+            if (screenState) normalized.screen = { state: screenState, message: status };
+        }
+
+        return normalized;
+    }
+
+    _extractMessage(status) {
+        if (!status || typeof status !== 'object') return '';
+        if (typeof status.message === 'string') return status.message;
+        if (typeof status.msg === 'string') return status.msg;
+        if (typeof status.text === 'string') return status.text;
+        return '';
+    }
+
+    _coerceState(kind, rawState, message) {
+        if (!rawState && rawState !== 0) return null;
+        const state = this._mapState(kind, rawState);
+        if (!state) return null;
+        const defaults = {
+            connection: {
+                connected: 'WebSocket connected',
+                connecting: 'Connecting to WebSocket',
+                disconnected: 'WebSocket disconnected',
+                error: 'WebSocket error',
+            },
+            audio: {
+                capturing: 'Microphone streaming',
+                idle: 'Microphone idle',
+                error: 'Microphone error',
+            },
+            screen: {
+                sharing: 'Screen sharing active',
+                idle: 'Screen capture idle',
+                error: 'Screen capture error',
+            },
+        };
+        return { state, message: message || defaults[kind]?.[state] || '' };
+    }
+
+    _mapState(kind, value) {
+        if (value == null) return null;
+        const key = String(value).toLowerCase();
+        const map = {
+            connection: {
+                connected: 'connected',
+                connect: 'connected',
+                open: 'connected',
+                ready: 'connected',
+                online: 'connected',
+                connecting: 'connecting',
+                pending: 'connecting',
+                opening: 'connecting',
+                disconnected: 'disconnected',
+                closed: 'disconnected',
+                ending: 'disconnected',
+                ended: 'disconnected',
+                idle: 'disconnected',
+                error: 'error',
+                failed: 'error',
+                timeout: 'error',
+            },
+            audio: {
+                capturing: 'capturing',
+                recording: 'capturing',
+                listening: 'capturing',
+                active: 'capturing',
+                starting: 'capturing',
+                idle: 'idle',
+                stopped: 'idle',
+                muted: 'idle',
+                ended: 'idle',
+                error: 'error',
+                failed: 'error',
+                denied: 'error',
+            },
+            screen: {
+                sharing: 'sharing',
+                capturing: 'sharing',
+                streaming: 'sharing',
+                active: 'sharing',
+                idle: 'idle',
+                stopped: 'idle',
+                ended: 'idle',
+                off: 'idle',
+                error: 'error',
+                failed: 'error',
+                blocked: 'error',
+                denied: 'error',
+            },
+        };
+
+        return map[kind]?.[key] ?? null;
+    }
+
+    _inferStateFromMessage(kind, message) {
+        if (kind === 'connection') {
+            if (/(ws open|connected|ready|live session connected)/i.test(message)) return 'connected';
+            if (/(connecting|opening|initialising|initializing)/i.test(message)) return 'connecting';
+            if (/(closed|ended|disconnected|session closed)/i.test(message)) return 'disconnected';
+            if (/(error|invalid|timeout|failed)/i.test(message)) return 'error';
+        }
+        if (kind === 'audio') {
+            if (/(listening|microphone (active|streaming)|audio capture started)/i.test(message)) return 'capturing';
+            if (/(microphone idle|audio capture stopped|microphone muted)/i.test(message)) return 'idle';
+            if (/(audio|microphone).*(error|denied|failed)/i.test(message)) return 'error';
+        }
+        if (kind === 'screen') {
+            if (/(screen capture (started|active)|sharing screen|screen streaming)/i.test(message)) return 'sharing';
+            if (/(screen capture ended|stopped|screen idle)/i.test(message)) return 'idle';
+            if (/(screen capture request was blocked|screen streaming failed|screen capture error)/i.test(message)) return 'error';
+        }
+        return null;
     }
 
     maybeSpeak(text) {
@@ -426,7 +666,7 @@ export class SalesWizardApp extends LitElement {
         this.sessionId = self.crypto?.randomUUID?.() ?? Date.now().toString();
         this.transcripts = [];
         this.notes = [];
-        this.noteText = '';
+        this.manualNotes = '';
         try {
             await this.persistHistoryTurn({ sessionStart: true, notes: '' });
         } catch (error) {
@@ -489,9 +729,24 @@ export class SalesWizardApp extends LitElement {
         }
     }
 
-    async handleNotesChange(e) {
+    async handleManualNotesChange(e) {
         const newNotes = e?.detail?.value ?? e?.target?.value ?? '';
-        this.noteText = newNotes;
+        this.manualNotes = newNotes;
+        await this.persistNotes();
+    }
+
+    async handleStructuredNotesChange(e) {
+        const updatedNotes = Array.isArray(e?.detail?.notes) ? e.detail.notes : [];
+        this.notes = updatedNotes.map(note => ({
+            ...note,
+            type: note.type || 'auto',
+            text: typeof note.text === 'string' ? note.text : '',
+            timestamp: typeof note.timestamp === 'number' ? note.timestamp : Date.now(),
+        }));
+        await this.persistNotes();
+    }
+
+    async persistNotes() {
         if (!this.sessionId) return;
         try {
             await this.persistHistoryTurn({ notes: this.noteText });
@@ -627,10 +882,13 @@ export class SalesWizardApp extends LitElement {
                             }}
                         ></assistant-view>
                         <side-panel
-                            .notes=${this.noteText}
+                            .structuredNotes=${this.notes}
+                            .manualNotes=${this.manualNotes}
                             .transcripts=${this.transcripts}
                             .selectedProfile=${this.selectedProfile}
                             @notes-change=${e => this.handleNotesChange(e)}
+                            @copy-transcript=${() => this.handleCopyTranscript()}
+                            @clear-session-data=${() => this.handleClearSessionData()}
                         ></side-panel>
                     </div>
                 `;
@@ -651,6 +909,12 @@ export class SalesWizardApp extends LitElement {
                     <app-header
                         .currentView=${this.currentView}
                         .statusText=${this.statusText}
+                        .connectionState=${this.connectionState}
+                        .audioState=${this.audioState}
+                        .screenState=${this.screenState}
+                        .connectionMessage=${this.connectionMessage}
+                        .audioMessage=${this.audioMessage}
+                        .screenMessage=${this.screenMessage}
                         .startTime=${this.startTime}
                         .advancedMode=${this.advancedMode}
                         .audioLevel=${this.audioLevel}
