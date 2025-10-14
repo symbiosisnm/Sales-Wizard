@@ -123,17 +123,196 @@ function createBackend(options = {}) {
     }
   });
 
+  function wsSend(wsInstance, payload) {
+    try {
+      if (wsInstance.readyState === wsInstance.OPEN) {
+        wsInstance.send(JSON.stringify(payload));
+      }
+    } catch (err) {
+      logger.error('Failed to send websocket payload:', err);
+    }
+  }
+
+  function normalizeGeminiResponse(response) {
+    const frames = [];
+    if (!response || typeof response !== 'object') {
+      return frames;
+    }
+
+    const isFinal = Boolean(
+      response.final ||
+        response.isFinal ||
+        response.done ||
+        response.turnComplete ||
+        response?.serverContent?.turnComplete ||
+        response?.serverContent?.modelTurn?.turnComplete ||
+        response?.metadata?.turnComplete
+    );
+
+    const seenTexts = new Set();
+    const collectText = text => {
+      if (typeof text !== 'string') return;
+      const trimmed = text;
+      if (!trimmed) return;
+      if (seenTexts.has(trimmed)) return;
+      seenTexts.add(trimmed);
+    };
+
+    const visitParts = parts => {
+      if (!Array.isArray(parts)) return { textParts: [], audioParts: [] };
+      const textParts = [];
+      const audioParts = [];
+      for (const part of parts) {
+        if (!part) continue;
+        if (typeof part === 'string') {
+          textParts.push(part);
+        } else if (typeof part.text === 'string') {
+          textParts.push(part.text);
+        } else if (part.inlineData && part.inlineData.mimeType) {
+          audioParts.push(part.inlineData);
+        }
+      }
+      return { textParts, audioParts };
+    };
+
+    const textCandidates = [];
+    const audioCandidates = [];
+
+    if (typeof response.text === 'string') {
+      textCandidates.push(response.text);
+    }
+
+    if (typeof response.output_text === 'string') {
+      textCandidates.push(response.output_text);
+    }
+
+    if (Array.isArray(response.output_texts)) {
+      textCandidates.push(...response.output_texts.filter(t => typeof t === 'string'));
+    }
+
+    if (Array.isArray(response.candidates)) {
+      for (const candidate of response.candidates) {
+        if (candidate?.content?.parts) {
+          const { textParts, audioParts } = visitParts(candidate.content.parts);
+          textCandidates.push(...textParts);
+          audioCandidates.push(...audioParts);
+        }
+      }
+    }
+
+    if (response.serverContent?.modelTurn?.parts) {
+      const { textParts, audioParts } = visitParts(response.serverContent.modelTurn.parts);
+      textCandidates.push(...textParts);
+      audioCandidates.push(...audioParts);
+    }
+
+    if (response.modelTurn?.parts) {
+      const { textParts, audioParts } = visitParts(response.modelTurn.parts);
+      textCandidates.push(...textParts);
+      audioCandidates.push(...audioParts);
+    }
+
+    const uniqueTexts = [];
+    for (const candidate of textCandidates) {
+      collectText(candidate);
+    }
+
+    for (const value of seenTexts.values()) {
+      uniqueTexts.push(value);
+    }
+
+    if (uniqueTexts.length > 0) {
+      frames.push({ type: 'model_text', text: uniqueTexts.join(''), final: isFinal });
+    }
+
+    const toBase64 = data => {
+      if (typeof data === 'string') {
+        try {
+          return Buffer.from(data, 'base64').toString('base64');
+        } catch (err) {
+          logger.error('Failed to treat inline string as base64, falling back to utf8 -> base64:', err);
+          return Buffer.from(data).toString('base64');
+        }
+      }
+      if (ArrayBuffer.isView(data)) {
+        return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64');
+      }
+      if (data instanceof ArrayBuffer) {
+        return Buffer.from(new Uint8Array(data)).toString('base64');
+      }
+      if (data instanceof Blob) {
+        // synchronous conversion for Blob is non-trivial; leave empty
+        return '';
+      }
+      try {
+        return Buffer.from(data).toString('base64');
+      } catch (err) {
+        logger.error('Unable to convert inline data to base64:', err);
+        return '';
+      }
+    };
+
+    for (const inlineData of audioCandidates) {
+      const base64 = toBase64(inlineData?.data);
+      if (!base64) continue;
+      frames.push({
+        type: 'model_audio',
+        data: base64,
+        mime: inlineData.mimeType || 'audio/pcm;rate=16000',
+        final: isFinal,
+      });
+    }
+
+    if (response.error) {
+      const message = typeof response.error === 'string' ? response.error : response.error.message || 'Gemini error';
+      frames.push({ type: 'error', event: 'model_error', message });
+    }
+
+    return frames;
+  }
+
   async function handleLiveConnection(ws) {
-    const session = await genai.live.connect({
-      model: 'gemini-live-2.5-flash-preview',
-      config: { response_modalities: [ModalityEnum.TEXT], system_instruction: buildSystemInstruction() },
-    });
+    const sendStatus = (event, extra = {}) => wsSend(ws, { type: 'status', event, ...extra });
+    const sendError = (event, err) => {
+      const message = err?.message || err?.toString() || 'Unknown error';
+      wsSend(ws, { type: 'error', event, message });
+    };
+
+    let session;
+    const model = 'gemini-live-2.5-flash-preview';
+    try {
+      session = await genai.live.connect({
+        model,
+        config: { response_modalities: [ModalityEnum.TEXT], system_instruction: buildSystemInstruction() },
+      });
+      sendStatus('session_open', { model });
+    } catch (err) {
+      logger.error('Failed to open Gemini live session:', err);
+      sendError('session_error', err);
+      if (ws.readyState === ws.OPEN) {
+        ws.close(1011, 'Gemini live connection failed');
+      }
+      throw err;
+    }
 
     (async () => {
-      for await (const response of session.receive()) {
-        ws.send(JSON.stringify({ text: response.text || '' }));
+      try {
+        for await (const response of session.receive()) {
+          const frames = normalizeGeminiResponse(response);
+          for (const frame of frames) {
+            wsSend(ws, frame);
+          }
+        }
+        sendStatus('session_closed', { reason: 'stream_complete' });
+      } catch (err) {
+        logger.error('Error streaming Gemini response:', err);
+        sendError('session_error', err);
+        sendStatus('session_closed', { reason: 'stream_error' });
       }
-    })().catch(err => logger.error('Error streaming Gemini response:', err));
+    })().catch(err => {
+      logger.error('Unexpected error in Gemini receive loop:', err);
+      sendError('session_error', err);
+    });
 
     ws.on('message', async msg => {
       try {
@@ -149,6 +328,7 @@ function createBackend(options = {}) {
         }
       } catch (err) {
         logger.error('Error handling live message:', err);
+        sendError('client_error', err);
       }
     });
 
