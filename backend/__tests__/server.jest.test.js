@@ -99,7 +99,22 @@ describe('backend/server', () => {
   });
 
   test('websocket bridge proxies messages to Gemini and back', async () => {
-    const responses = [{ text: 'streamed response' }];
+    const audioChunk = Buffer.from('audio-chunk').toString('base64');
+    const responses = [
+      {
+        serverContent: {
+          modelTurn: {
+            parts: [
+              { text: 'streamed ' },
+              { inlineData: { data: audioChunk, mimeType: 'audio/pcm;rate=16000' } },
+              { text: 'response' },
+            ],
+            turnComplete: false,
+          },
+        },
+      },
+      { text: 'final chunk', final: true },
+    ];
     const { genai, session } = createMockGenai({ responses });
     const historyStore = createHistoryStore();
     const backend = createBackend({
@@ -124,7 +139,16 @@ describe('backend/server', () => {
 
     await new Promise(resolve => ws.on('open', resolve));
 
-    const messagePromise = new Promise(resolve => ws.on('message', data => resolve(data.toString())));
+    const messages = [];
+    const streamComplete = new Promise(resolve => {
+      ws.on('message', data => {
+        const payload = JSON.parse(data.toString());
+        messages.push(payload);
+        if (payload.type === 'status' && payload.event === 'session_closed') {
+          resolve();
+        }
+      });
+    });
 
     const payload = { audio: Buffer.from('abc').toString('base64'), mimeType: 'audio/test' };
     ws.send(JSON.stringify(payload));
@@ -135,12 +159,76 @@ describe('backend/server', () => {
       audio: { data: Buffer.from('abc'), mime_type: 'audio/test' },
     });
 
-    const message = await messagePromise;
-    expect(JSON.parse(message)).toEqual({ text: 'streamed response' });
+    await streamComplete;
+
+    expect(messages[0]).toEqual({ type: 'status', event: 'session_open', model: 'gemini-live-2.5-flash-preview' });
+
+    const textChunk = messages.find(msg => msg.type === 'model_text' && msg.final === false);
+    expect(textChunk).toEqual({ type: 'model_text', text: 'streamed response', final: false });
+
+    const audioFrame = messages.find(msg => msg.type === 'model_audio');
+    expect(audioFrame).toEqual({
+      type: 'model_audio',
+      data: audioChunk,
+      mime: 'audio/pcm;rate=16000',
+      final: false,
+    });
+
+    const finalChunk = messages.find(msg => msg.type === 'model_text' && msg.final === true);
+    expect(finalChunk).toEqual({ type: 'model_text', text: 'final chunk', final: true });
+
+    expect(messages[messages.length - 1]).toEqual({
+      type: 'status',
+      event: 'session_closed',
+      reason: 'stream_complete',
+    });
 
     ws.close();
     await new Promise(resolve => ws.on('close', resolve));
     expect(session.closed).toBe(true);
+
+    await new Promise(resolve => wss.close(resolve));
+    await new Promise(resolve => server.close(resolve));
+  });
+
+  test('websocket bridge surfaces stream errors as error frames', async () => {
+    const receiveError = new Error('stream explode');
+    const { genai } = createMockGenai({ receiveError });
+    const historyStore = createHistoryStore();
+    const backend = createBackend({
+      logger,
+      historyStoreImpl: historyStore,
+      genaiClient: genai,
+      ModalityEnum: { TEXT: 'TEXT' },
+      port: 0,
+    });
+
+    const server = backend.app.listen(0);
+    const address = server.address();
+    const port = typeof address === 'object' ? address.port : 0;
+    const wss = backend.attachLiveWebSocket(server);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/live`);
+
+    await new Promise(resolve => ws.on('open', resolve));
+
+    const errorFrame = await new Promise(resolve => {
+      ws.on('message', data => {
+        const payload = JSON.parse(data.toString());
+        if (payload.type === 'error') {
+          resolve(payload);
+        }
+      });
+    });
+
+    expect(errorFrame).toMatchObject({
+      type: 'error',
+      event: 'session_error',
+      message: expect.stringContaining('stream explode'),
+    });
+
+    ws.close();
+    await new Promise(resolve => ws.on('close', resolve));
 
     await new Promise(resolve => wss.close(resolve));
     await new Promise(resolve => server.close(resolve));

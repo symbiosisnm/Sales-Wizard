@@ -1,8 +1,9 @@
 class MockLiveSession {
-  constructor(responses = []) {
+  constructor(responses = [], { receiveError } = {}) {
     this._responses = responses;
     this.sentInputs = [];
     this.closed = false;
+    this._receiveError = receiveError;
   }
 
   async *receive() {
@@ -10,6 +11,9 @@ class MockLiveSession {
       // Simulate asynchronous delivery
       await Promise.resolve();
       yield response;
+    }
+    if (this._receiveError) {
+      throw this._receiveError;
     }
   }
 
@@ -23,8 +27,8 @@ class MockLiveSession {
   }
 }
 
-function createMockGenai({ responses = [], replyText = 'Mock reply' } = {}) {
-  const session = new MockLiveSession(responses);
+function createMockGenai({ responses = [], replyText = 'Mock reply', receiveError } = {}) {
+  const session = new MockLiveSession(responses, { receiveError });
   const generateContent = jest.fn().mockResolvedValue({
     candidates: [
       {
