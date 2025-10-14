@@ -3,6 +3,18 @@ const WebSocket = require('ws');
 const { createBackend } = require('../server');
 const { createMockGenai } = require('../../tests/fixtures/mockGenai');
 
+const AUTH_TOKEN = 'jest-secret-token';
+const ALLOWED_ORIGIN = 'http://localhost';
+
+beforeAll(() => {
+  process.env.AUTH_TOKEN = AUTH_TOKEN;
+  process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
+});
+
+function withAuth(req) {
+  return req.set('AUTH_TOKEN', AUTH_TOKEN).set('Origin', ALLOWED_ORIGIN);
+}
+
 function createHistoryStore() {
   return {
     appendTurn: jest.fn(),
@@ -26,8 +38,10 @@ describe('backend/server', () => {
     const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: genai });
     const agent = request(backend.app);
 
-    await agent.put('/context-params').send({ allowedSources: 'Docs', toneLength: 'Short' }).expect(200);
-    const response = await agent.get('/context-params').expect(200);
+    await withAuth(agent.put('/context-params'))
+      .send({ allowedSources: 'Docs', toneLength: 'Short' })
+      .expect(200);
+    const response = await withAuth(agent.get('/context-params')).expect(200);
     expect(response.body).toEqual({
       allowedSources: 'Docs',
       toneLength: 'Short',
@@ -45,7 +59,7 @@ describe('backend/server', () => {
     const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: genai });
     const agent = request(backend.app);
 
-    const res = await agent.post('/ask').send({ prompt: 'Hi' }).expect(200);
+    const res = await withAuth(agent.post('/ask')).send({ prompt: 'Hi' }).expect(200);
     expect(res.body).toEqual({ reply: 'Hello there' });
     expect(backend.state.history).toEqual([{ prompt: 'Hi', reply: 'Hello there' }]);
   });
@@ -58,7 +72,7 @@ describe('backend/server', () => {
     const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: genai });
     const agent = request(backend.app);
 
-    const res = await agent.post('/ask').send({ prompt: 'Hi' }).expect(500);
+    const res = await withAuth(agent.post('/ask')).send({ prompt: 'Hi' }).expect(500);
     expect(res.body).toEqual({ error: 'Generation failed' });
     expect(logger.error).toHaveBeenCalledWith('Error:', error);
   });
@@ -68,19 +82,19 @@ describe('backend/server', () => {
     const backend = createBackend({ logger, historyStoreImpl: historyStore, genaiClient: createMockGenai().genai });
     const agent = request(backend.app);
 
-    await agent.post('/history/test-session/turn').send({ role: 'user' }).expect(200);
+    await withAuth(agent.post('/history/test-session/turn')).send({ role: 'user' }).expect(200);
     expect(historyStore.appendTurn).toHaveBeenCalledWith('test-session', { role: 'user' });
 
-    await agent.delete('/history').expect(200);
+    await withAuth(agent.delete('/history')).expect(200);
     expect(historyStore.clearHistory).toHaveBeenCalled();
 
-    await agent.get('/history').expect(200);
+    await withAuth(agent.get('/history')).expect(200);
     expect(historyStore.listSessions).toHaveBeenCalled();
 
-    await agent.put('/history/limit').send({ limit: 10 }).expect(200);
+    await withAuth(agent.put('/history/limit')).send({ limit: 10 }).expect(200);
     expect(historyStore.setMaxSessions).toHaveBeenCalledWith(10);
 
-    const notFound = await agent.get('/history/unknown').expect(404);
+    const notFound = await withAuth(agent.get('/history/unknown')).expect(404);
     expect(notFound.body).toEqual({ error: 'Not found' });
   });
 
@@ -101,7 +115,12 @@ describe('backend/server', () => {
     const port = typeof address === 'object' ? address.port : 0;
     const wss = backend.attachLiveWebSocket(server);
 
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/live`);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/live`, {
+      headers: {
+        AUTH_TOKEN,
+        Origin: ALLOWED_ORIGIN,
+      },
+    });
 
     await new Promise(resolve => ws.on('open', resolve));
 

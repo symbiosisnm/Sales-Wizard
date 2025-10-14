@@ -18,6 +18,64 @@ function createBackend(options = {}) {
   const app = express();
   app.use(express.json());
 
+  const expectedToken = (process.env.AUTH_TOKEN || '').trim();
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+  function originAllowed(origin) {
+    if (!allowedOrigins.length) {
+      return true;
+    }
+    return typeof origin === 'string' && allowedOrigins.includes(origin);
+  }
+
+  function applyCorsHeaders(res, origin) {
+    if (originAllowed(origin) && origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, AUTH_TOKEN, authToken, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
+  }
+
+  function extractHttpToken(req) {
+    return (
+      req.get('AUTH_TOKEN') ||
+      req.get('auth_token') ||
+      req.query?.authToken ||
+      req.query?.AUTH_TOKEN ||
+      ''
+    ).toString().trim();
+  }
+
+  app.use((req, res, next) => {
+    const origin = req.get('Origin') || req.get('origin');
+
+    if (!originAllowed(origin)) {
+      return res.status(403).json({ error: 'Origin not allowed' });
+    }
+
+    applyCorsHeaders(res, origin);
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+
+    if (!expectedToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const providedToken = extractHttpToken(req);
+    if (providedToken !== expectedToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    return next();
+  });
+
   const genai = genaiClient || new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
   // In-memory state for conversation history and context parameters
@@ -161,11 +219,86 @@ function createBackend(options = {}) {
     return session;
   }
 
+  function extractSocketToken(request) {
+    const headerToken =
+      request.headers['auth_token'] ||
+      request.headers['auth-token'] ||
+      request.headers['AUTH_TOKEN'];
+
+    if (headerToken) {
+      return headerToken.toString().trim();
+    }
+
+    try {
+      const url = new URL(request.url, `http://${request.headers.host}`);
+      return (
+        url.searchParams.get('authToken') ||
+        url.searchParams.get('AUTH_TOKEN') ||
+        ''
+      )
+        .toString()
+        .trim();
+    } catch (err) {
+      logger.error('Failed to parse WebSocket auth parameters:', err);
+      return '';
+    }
+  }
+
   function attachLiveWebSocket(serverInstance) {
-    const wss = new WebSocketServer({ server: serverInstance, path: '/live' });
+    const wss = new WebSocketServer({ noServer: true });
+
+    const upgradeListener = (request, socket, head) => {
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(request.url, `http://${request.headers.host}`);
+      } catch (err) {
+        socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      if (parsedUrl.pathname !== '/live') {
+        socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      const origin = request.headers.origin || request.headers.Origin;
+
+      if (!originAllowed(origin)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      if (!expectedToken) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      const token = extractSocketToken(request);
+      if (token !== expectedToken) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(request, socket, head, ws => {
+        wss.emit('connection', ws, request);
+      });
+    };
+
+    serverInstance.on('upgrade', upgradeListener);
+
+    wss.on('close', () => {
+      serverInstance.removeListener('upgrade', upgradeListener);
+    });
+
     wss.on('connection', ws => {
       handleLiveConnection(ws).catch(err => logger.error('Failed to establish live session:', err));
     });
+
     return wss;
   }
 

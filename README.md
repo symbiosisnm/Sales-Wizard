@@ -131,6 +131,33 @@ By default the server listens on port 3001 (or the value of the `PORT` environme
   backend accepts calls from any origin; otherwise, disallowed origins are rejected with `403` before reaching your
   handlers.
 
+### Authorized request examples
+
+```js
+// HTTP example
+await fetch('http://localhost:3001/ask', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    AUTH_TOKEN: process.env.AUTH_TOKEN,
+    Origin: 'http://localhost:3000',
+  },
+  body: JSON.stringify({ prompt: 'Hello there!' }),
+});
+
+// WebSocket example
+const ws = new WebSocket('ws://localhost:3001/live', {
+  headers: {
+    AUTH_TOKEN: process.env.AUTH_TOKEN,
+    Origin: 'http://localhost:3000',
+  },
+});
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ text: 'Ready to stream' }));
+};
+```
+
 ## API Endpoints
 
 ### `/history`
