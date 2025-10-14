@@ -196,6 +196,44 @@ export class SalesWizardApp extends LitElement {
         this.updateLayoutMode();
     }
 
+    get notePayload() {
+        const manualNotes = typeof this.manualNotes === 'string' ? this.manualNotes : '';
+        const structuredNotes = Array.isArray(this.notes)
+            ? this.notes
+                  .map(note => {
+                      if (!note || typeof note !== 'object') return null;
+                      const text = typeof note.text === 'string' ? note.text.trim() : '';
+                      if (!text) {
+                          return null;
+                      }
+                      return {
+                          ...note,
+                          text,
+                          type: typeof note.type === 'string' && note.type ? note.type : 'auto',
+                          timestamp:
+                              typeof note.timestamp === 'number' && Number.isFinite(note.timestamp)
+                                  ? note.timestamp
+                                  : Date.now(),
+                      };
+                  })
+                  .filter(Boolean)
+            : [];
+
+        return {
+            notes: structuredNotes,
+            manualNotes,
+        };
+    }
+
+    get noteText() {
+        const { notes, manualNotes } = this.notePayload;
+        const structuredText = notes.map(note => note.text).join('\n');
+        if (manualNotes && structuredText) {
+            return `${manualNotes}\n\n${structuredText}`;
+        }
+        return manualNotes || structuredText || '';
+    }
+
     connectedCallback() {
         super.connectedCallback();
 
@@ -264,7 +302,7 @@ export class SalesWizardApp extends LitElement {
                         await this.persistHistoryTurn({
                             transcription: transcript,
                             ai_response: reply,
-                            notes: this.noteText,
+                            ...this.notePayload,
                         });
                     } catch (err) {
                         logger.error('Failed to post turn:', err);
@@ -668,7 +706,7 @@ export class SalesWizardApp extends LitElement {
         this.notes = [];
         this.manualNotes = '';
         try {
-            await this.persistHistoryTurn({ sessionStart: true, notes: '' });
+            await this.persistHistoryTurn({ sessionStart: true, ...this.notePayload });
         } catch (error) {
             logger.error('Failed to start session history:', error);
         }
@@ -737,19 +775,24 @@ export class SalesWizardApp extends LitElement {
 
     async handleStructuredNotesChange(e) {
         const updatedNotes = Array.isArray(e?.detail?.notes) ? e.detail.notes : [];
-        this.notes = updatedNotes.map(note => ({
-            ...note,
-            type: note.type || 'auto',
-            text: typeof note.text === 'string' ? note.text : '',
-            timestamp: typeof note.timestamp === 'number' ? note.timestamp : Date.now(),
-        }));
+        this.notes = updatedNotes
+            .filter(note => note && typeof note === 'object')
+            .map(note => ({
+                ...note,
+                type: typeof note.type === 'string' && note.type ? note.type : 'auto',
+                text: typeof note.text === 'string' ? note.text : '',
+                timestamp:
+                    typeof note.timestamp === 'number' && Number.isFinite(note.timestamp)
+                        ? note.timestamp
+                        : Date.now(),
+            }));
         await this.persistNotes();
     }
 
     async persistNotes() {
         if (!this.sessionId) return;
         try {
-            await this.persistHistoryTurn({ notes: this.noteText });
+            await this.persistHistoryTurn({ ...this.notePayload });
         } catch (error) {
             logger.error('Failed to save notes:', error);
         }
@@ -886,7 +929,8 @@ export class SalesWizardApp extends LitElement {
                             .manualNotes=${this.manualNotes}
                             .transcripts=${this.transcripts}
                             .selectedProfile=${this.selectedProfile}
-                            @notes-change=${e => this.handleNotesChange(e)}
+                            @structured-notes-change=${e => this.handleStructuredNotesChange(e)}
+                            @manual-notes-change=${e => this.handleManualNotesChange(e)}
                             @copy-transcript=${() => this.handleCopyTranscript()}
                             @clear-session-data=${() => this.handleClearSessionData()}
                         ></side-panel>
