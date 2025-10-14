@@ -5,6 +5,69 @@ const audioHandler = require('./audioHandler');
 const reconnection = require('./reconnection');
 const sessionManager = require('./sessionManager');
 const liveStreamManager = require('./liveStreamManager');
+const { resolveBackendOrigin } = require('../services/backendConfig.js');
+
+const API_BASE = resolveBackendOrigin();
+const AUTH_TOKEN =
+    process.env.AUTH_TOKEN || process.env.SALES_WIZARD_AUTH_TOKEN || process.env.SW_AUTH_TOKEN;
+
+async function fetchJson(url, options = {}) {
+    const { headers: originalHeaders, ...rest } = options || {};
+    const headers = new Headers(originalHeaders || {});
+
+    if (AUTH_TOKEN && !headers.has('AUTH_TOKEN')) {
+        headers.set('AUTH_TOKEN', AUTH_TOKEN);
+    }
+
+    if (!headers.has('Content-Type') && rest.body && typeof rest.body === 'string') {
+        headers.set('Content-Type', 'application/json');
+    }
+
+    const response = await fetch(url, { ...rest, headers });
+    const contentType = response.headers?.get?.('content-type') || '';
+
+    if (!response.ok) {
+        let errorPayload;
+
+        if (contentType.includes('application/json')) {
+            try {
+                errorPayload = await response.json();
+            } catch (_err) {
+                errorPayload = await response.text().catch(() => '');
+            }
+        } else {
+            errorPayload = await response.text().catch(() => '');
+        }
+
+        const message =
+            (errorPayload && typeof errorPayload === 'object' && errorPayload.error) ||
+            (typeof errorPayload === 'string' && errorPayload) ||
+            `Request failed with status ${response.status}`;
+
+        const error = new Error(message);
+        error.status = response.status;
+        error.body = errorPayload;
+        throw error;
+    }
+
+    if (response.status === 204 || response.status === 205) {
+        return null;
+    }
+
+    if (!contentType.includes('application/json')) {
+        const error = new Error('Expected JSON response');
+        error.status = response.status;
+        throw error;
+    }
+
+    try {
+        return await response.json();
+    } catch (err) {
+        const parseError = new Error('Failed to parse JSON response');
+        parseError.cause = err;
+        throw parseError;
+    }
+}
 
 function setupGeminiIpcHandlers(geminiSessionRef) {
     global.geminiSessionRef = geminiSessionRef;

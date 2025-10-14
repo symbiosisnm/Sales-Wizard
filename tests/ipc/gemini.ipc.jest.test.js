@@ -10,13 +10,19 @@ jest.mock('electron', () => {
   };
 });
 
-jest.mock('../../src/utils/audioHandler', () => ({
-  stopMacOSAudioCapture: jest.fn(),
-  startMacOSAudioCapture: jest.fn().mockResolvedValue(true),
-  killExistingSystemAudioDump: jest.fn(),
-  convertStereoToMono: jest.fn(),
-  sendAudioToGemini: jest.fn(),
-}));
+jest.mock('../../src/utils/audioHandler', () => {
+  const stopSystemAudioCapture = jest.fn();
+  const startSystemAudioCapture = jest.fn().mockResolvedValue(true);
+  return {
+    stopSystemAudioCapture,
+    startSystemAudioCapture,
+    stopMacOSAudioCapture: stopSystemAudioCapture,
+    startMacOSAudioCapture: startSystemAudioCapture,
+    killExistingSystemAudioDump: jest.fn(),
+    convertStereoToMono: jest.fn(),
+    sendAudioToGemini: jest.fn(),
+  };
+});
 
 jest.mock('../../src/utils/reconnection', () => ({
   clearSessionParams: jest.fn(),
@@ -53,7 +59,11 @@ const reconnection = require('../../src/utils/reconnection');
 const sessionManager = require('../../src/utils/sessionManager');
 const conversationStore = require('../../src/utils/conversationStore');
 
+process.env.AUTH_TOKEN = 'test-token';
+
 const { setupGeminiIpcHandlers } = require('../../src/utils/gemini');
+
+const originalFetch = global.fetch;
 
 describe('Gemini IPC handlers', () => {
   let geminiSessionRef;
@@ -63,6 +73,11 @@ describe('Gemini IPC handlers', () => {
     ipcMain.__handlers.clear();
     geminiSessionRef = { current: null };
     global.logger = { error: jest.fn(), info: jest.fn(), warn: jest.fn() };
+    process.env.AUTH_TOKEN = 'test-token';
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   function getHandler(channel) {
@@ -103,7 +118,7 @@ describe('Gemini IPC handlers', () => {
 
     const result = await handler();
     expect(result).toEqual({ success: true });
-    expect(audioHandler.startMacOSAudioCapture).toHaveBeenCalled();
+    expect(audioHandler.startSystemAudioCapture).toHaveBeenCalled();
 
     platformSpy.mockRestore();
   });
@@ -115,7 +130,7 @@ describe('Gemini IPC handlers', () => {
 
     const result = await getHandler('close-session')();
     expect(result).toEqual({ success: true });
-    expect(audioHandler.stopMacOSAudioCapture).toHaveBeenCalled();
+    expect(audioHandler.stopSystemAudioCapture).toHaveBeenCalled();
     expect(reconnection.clearSessionParams).toHaveBeenCalled();
     expect(close).toHaveBeenCalled();
     expect(geminiSessionRef.current).toBeNull();
@@ -136,5 +151,98 @@ describe('Gemini IPC handlers', () => {
     const result = await handler();
     expect(result).toEqual({ success: true, sessionId: 'session-123' });
     expect(conversationStore.initializeNewSession).toHaveBeenCalled();
+  });
+
+  test('history:list fetches sessions via authenticated helper', async () => {
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => [{ id: 'session-a' }],
+    };
+    global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+    setupGeminiIpcHandlers(geminiSessionRef);
+    const handler = getHandler('history:list');
+
+    const result = await handler();
+
+    expect(result).toEqual({ success: true, data: [{ id: 'session-a' }] });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url.endsWith('/history')).toBe(true);
+    const headerEntries = Object.fromEntries(options.headers.entries());
+    expect(headerEntries.AUTH_TOKEN).toBe('test-token');
+  });
+
+  test('history:set-limit sends JSON payload with auth header', async () => {
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ ok: true }),
+    };
+    global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+    setupGeminiIpcHandlers(geminiSessionRef);
+    const handler = getHandler('history:set-limit');
+
+    const result = await handler(null, 5);
+
+    expect(result).toEqual({ success: true });
+    const [, options] = global.fetch.mock.calls[0];
+    expect(options.method).toBe('PUT');
+    expect(options.body).toBe(JSON.stringify({ limit: 5 }));
+    const headerEntries = Object.fromEntries(options.headers.entries());
+    expect(headerEntries.AUTH_TOKEN).toBe('test-token');
+    expect(headerEntries['Content-Type']).toBe('application/json');
+  });
+
+  test('assistant:ask propagates backend replies', async () => {
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ reply: 'Hello there' }),
+    };
+    global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+    setupGeminiIpcHandlers(geminiSessionRef);
+    const handler = getHandler('assistant:ask');
+
+    const result = await handler(null, 'Hi!');
+
+    expect(result).toEqual({ success: true, data: { reply: 'Hello there' } });
+    const [, options] = global.fetch.mock.calls[0];
+    expect(options.method).toBe('POST');
+    expect(options.body).toBe(JSON.stringify({ prompt: 'Hi!' }));
+    const headerEntries = Object.fromEntries(options.headers.entries());
+    expect(headerEntries.AUTH_TOKEN).toBe('test-token');
+    expect(headerEntries['Content-Type']).toBe('application/json');
+  });
+
+  test('assistant:ask surfaces backend errors', async () => {
+    const mockResponse = {
+      ok: false,
+      status: 500,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ error: 'Generation failed' }),
+      text: async () => 'Generation failed',
+    };
+    global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+    setupGeminiIpcHandlers(geminiSessionRef);
+    const handler = getHandler('assistant:ask');
+
+    const result = await handler(null, 'Hello');
+
+    expect(result).toEqual({ success: false, error: 'Generation failed' });
+    expect(global.logger.error).toHaveBeenCalledWith(
+      'Error requesting assistant reply:',
+      expect.any(Error)
+    );
+    const [, options] = global.fetch.mock.calls[0];
+    const headerEntries = Object.fromEntries(options.headers.entries());
+    expect(headerEntries.AUTH_TOKEN).toBe('test-token');
   });
 });
