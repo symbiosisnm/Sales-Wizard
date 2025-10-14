@@ -491,9 +491,13 @@ function createBackend(options = {}) {
   return { app, state, buildSystemInstruction, start, attachLiveWebSocket };
 }
 
-if (require.main === module) {
-  const { start } = createBackend();
-  start();
+function startServer(options = {}) {
+  const backend = createBackend(options);
+  return backend.start();
 }
 
-module.exports = { createBackend };
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { createBackend, startServer };

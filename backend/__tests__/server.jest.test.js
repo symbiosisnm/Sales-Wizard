@@ -1,6 +1,6 @@
 const request = require('supertest');
 const WebSocket = require('ws');
-const { createBackend } = require('../server');
+const { createBackend, startServer } = require('../server');
 const { createMockGenai } = require('../../tests/fixtures/mockGenai');
 
 const AUTH_TOKEN = 'jest-secret-token';
@@ -232,5 +232,30 @@ describe('backend/server', () => {
 
     await new Promise(resolve => wss.close(resolve));
     await new Promise(resolve => server.close(resolve));
+  });
+
+  test('startServer starts backend and returns cleanup handles', async () => {
+    const historyStore = createHistoryStore();
+    const { genai } = createMockGenai();
+
+    const { server, wss } = startServer({
+      logger,
+      historyStoreImpl: historyStore,
+      genaiClient: genai,
+      port: 0,
+    });
+
+    expect(server).toBeDefined();
+    expect(typeof server.close).toBe('function');
+    expect(wss).toBeDefined();
+    expect(typeof wss.close).toBe('function');
+    expect(server.listening).toBe(true);
+
+    await Promise.all([
+      new Promise(resolve => wss.close(resolve)),
+      new Promise(resolve => server.close(resolve)),
+    ]);
+
+    expect(server.listening).toBe(false);
   });
 });
