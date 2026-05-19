@@ -25,7 +25,7 @@ function ensureDataDirectories() {
     return { imageDir, audioDir };
 }
 
-function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
+function createWindow(sendToRenderer, randomNames = null) {
     // Get layout preference (default to 'normal')
     let windowWidth = 1100;
     let windowHeight = 600;
@@ -125,17 +125,17 @@ function createWindow(sendToRenderer, geminiSessionRef, randomNames = null) {
                         mainWindow.setContentProtection(false);
                     }
 
-                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer);
                 })
                 .catch(() => {
                     // Default to content protection enabled
                     mainWindow.setContentProtection(false);
-                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer);
                 });
         }, 150);
     });
 
-    setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef);
+    setupWindowIpcHandlers(mainWindow, sendToRenderer);
 
     return mainWindow;
 }
@@ -348,7 +348,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     }
 }
 
-function setupWindowIpcHandlers(mainWindow, sendToRenderer, _geminiSessionRef) {
+function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
     ipcMain.on('view-changed', (event, view) => {
         if (view !== 'assistant' && !mainWindow.isDestroyed()) {
             mainWindow.setIgnoreMouseEvents(false);

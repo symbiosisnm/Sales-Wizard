@@ -1,5 +1,6 @@
-// Unified LLM client for live interactions over WebSocket.
-// Mirrors the desktop implementation but with browser-friendly defaults.
+// Browser-side client for the local `/live` WebSocket bridge.
+// The backend owns the OpenAI Realtime connection so the browser never
+// needs to hold a standard OpenAI API key directly.
 
 function resolveDefaultWs() {
   if (typeof window !== 'undefined') {
@@ -14,6 +15,7 @@ const DEFAULT_WS = resolveDefaultWs();
 export class LLMClient {
     /** @type {WebSocket|null} */
     ws = null;
+    intentionallyClosed = false;
     /** @type {(txt:string)=>void} */
     onText = () => {};
     /** @type {(s:string)=>void} */
@@ -22,14 +24,17 @@ export class LLMClient {
     onError = () => {};
     /** @type {(data:string,mime:string)=>void} */
     onAudio = () => {};
+    /** @type {(transcript:string)=>void} */
+    onTranscript = () => {};
 
     constructor({ url = DEFAULT_WS } = {}) {
         this.url = url;
     }
 
-    connect({ model = 'gemini-live-2.5-flash-preview', responseModalities = ['TEXT'], systemInstruction } = {}) {
+    connect({ model = 'gpt-realtime-2', responseModalities = ['text'], systemInstruction, apiKey } = {}) {
         return new Promise((resolve, reject) => {
             try {
+                this.intentionallyClosed = false;
                 this.ws = new WebSocket(this.url);
                 let opened = false;
                 const timeout = setTimeout(() => {
@@ -54,12 +59,15 @@ export class LLMClient {
                         model,
                         responseModalities,
                         systemInstruction: instr,
+                        apiKey,
                     });
                     this.onStatus('WS open');
                     resolve(true);
                 };
                 this.ws.onclose = () => {
-                    this.onStatus('WS closed');
+                    if (!this.intentionallyClosed) {
+                        this.onStatus('WS closed');
+                    }
                     if (!opened) {
                         clearTimeout(timeout);
                         const msg = 'WS closed before open';
@@ -82,6 +90,7 @@ export class LLMClient {
                         else if (msg.type === 'error') this.onError(msg.msg);
                         else if (msg.type === 'model_text') this.onText(msg.text);
                         else if (msg.type === 'model_audio') this.onAudio(msg.data, msg.mime);
+                        else if (msg.type === 'user_transcript') this.onTranscript(msg.transcript);
                     } catch (e) {
                         /* empty */
                     }
@@ -131,6 +140,7 @@ export class LLMClient {
     }
 
     end() {
+        this.intentionallyClosed = true;
         this._send({ type: 'end' });
         try {
             this.ws?.close();

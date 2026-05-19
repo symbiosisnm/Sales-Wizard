@@ -9,10 +9,7 @@ import '../views/OnboardingView.js';
 import '../views/AdvancedView.js';
 import '../views/SidePanel.js';
 
-// Voice assistant helper provides speech recognition via the Web Speech API.
-// It exports a startListening() function that returns a stop function.
-import { startListening } from '../../utils/voiceAssistant.js';
-// Live streaming helper integrates with Gemini Live via backend
+// Live streaming helper integrates with the local OpenAI Realtime bridge.
 import { startLiveStreaming } from '../../utils/liveStreamer.mjs';
 import defaultLogger from '../../utils/logger.js';
 
@@ -202,84 +199,9 @@ export class CheatingDaddyApp extends LitElement {
             window.electron.onClickThroughToggled?.(this._clickThroughHandler);
         }
 
-        // Start the voice assistant to listen for spoken questions and
-        // automatically query the local Gemini backend. The callback
-        // assigns responses via setResponse(). A stop function is saved
-        // so it can be cleaned up in disconnectedCallback().
-
-        // Start the voice assistant to listen for spoken questions and
-        // automatically query the local Gemini backend. The callback
-        // assigns responses via setResponse(). A stop function is saved
-        // so it can be cleaned up in disconnectedCallback().
-        this._stopVoiceAssistant = startListening(async transcript => {
-            try {
-                const res = await fetch('http://localhost:3001/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: transcript }),
-                });
-                const data = await res.json();
-                if (data.reply) {
-                    this.setResponse(data.reply);
-                    if (this.sessionId) {
-                        this.transcripts = [
-                            ...this.transcripts,
-                            { transcription: transcript, ai_response: data.reply },
-                        ];
-                        try {
-                            await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    transcription: transcript,
-                                    ai_response: data.reply,
-                                    notes: this.noteText,
-                                }),
-                            });
-                        } catch (err) {
-                            logger.error('Failed to post turn:', err);
-                        }
-                    }
-                }
-            } catch (err) {
-                logger.error('Voice assistant fetch failed:', err);
-            }
-        });
-
-        // Start live streaming of audio and screen using the new LLMClient
-        // workflow. Responses and status updates feed directly into the UI.
-        startLiveStreaming({
-            onResponse: response => {
-                if (response) this.setResponse(response);
-            },
-            onStatus: status => this.setStatus(status),
-            onError: err => logger.error('Live streaming error:', err),
-            onAudioLevel: level => {
-                this.audioLevel = level;
-                this.requestUpdate();
-            },
-            onNote: note => {
-                if (note) {
-                    this.notes = [...this.notes, note];
-                    this.requestUpdate();
-                }
-            },
-        })
-            .then(stopFn => {
-                this._stopLiveStreaming = stopFn;
-            })
-            .catch(err => {
-                logger.error('Failed to start live streaming:', err);
-            });
     }
 
     disconnectedCallback() {
-        // Stop the voice assistant when the component is detached.
-        if (this._stopVoiceAssistant) {
-            this._stopVoiceAssistant();
-            this._stopVoiceAssistant = null;
-        }
-
         // Stop live streaming if it's active
         if (this._stopLiveStreaming) {
             this._stopLiveStreaming();
@@ -302,6 +224,29 @@ export class CheatingDaddyApp extends LitElement {
             this._currentResponseIsComplete = true;
             logger.info('[setStatus] Marked current response as complete');
             const last = this.responses?.length ? this.responses[this.responses.length - 1] : null;
+            const transcriptIndex = this.transcripts.findLastIndex(item => !item.ai_response);
+            if (last && transcriptIndex !== -1) {
+                const nextTranscripts = [...this.transcripts];
+                const pairedTurn = {
+                    ...nextTranscripts[transcriptIndex],
+                    ai_response: last,
+                };
+                nextTranscripts[transcriptIndex] = pairedTurn;
+                this.transcripts = nextTranscripts;
+                if (this.sessionId) {
+                    fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            transcription: pairedTurn.transcription,
+                            ai_response: pairedTurn.ai_response,
+                            notes: this.noteText,
+                        }),
+                    }).catch(err => {
+                        logger.error('Failed to post turn:', err);
+                    });
+                }
+            }
             if (last) this.maybeSpeak(last);
         }
     }
@@ -379,13 +324,12 @@ export class CheatingDaddyApp extends LitElement {
         if (this.currentView === 'customize' || this.currentView === 'help' || this.currentView === 'history') {
             this.currentView = 'main';
         } else if (this.currentView === 'assistant') {
-            cheddar.stopCapture();
-
-            // Close the session
-            if (window.electron?.closeSession) {
-                await window.electron.closeSession();
+            if (this._stopLiveStreaming) {
+                this._stopLiveStreaming();
+                this._stopLiveStreaming = null;
             }
             this.sessionActive = false;
+            this.audioLevel = 0;
             this.currentView = 'main';
             logger.info('Session closed');
         } else {
@@ -415,9 +359,10 @@ export class CheatingDaddyApp extends LitElement {
             return;
         }
 
-        await cheddar.initializeGemini(this.selectedProfile, this.selectedLanguage);
-        // Pass the screenshot interval as string (including 'manual' option)
-        cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        if (this._stopLiveStreaming) {
+            this._stopLiveStreaming();
+            this._stopLiveStreaming = null;
+        }
         this.responses = [];
         this.currentResponseIndex = -1;
         this.startTime = Date.now();
@@ -425,6 +370,7 @@ export class CheatingDaddyApp extends LitElement {
         this.transcripts = [];
         this.notes = [];
         this.noteText = '';
+        this.sessionActive = true;
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
                 method: 'POST',
@@ -434,12 +380,50 @@ export class CheatingDaddyApp extends LitElement {
         } catch (error) {
             logger.error('Failed to start session history:', error);
         }
+
+        try {
+            this._stopLiveStreaming = await startLiveStreaming({
+                apiKey,
+                onResponse: response => {
+                    if (response) this.setResponse(response);
+                },
+                onStatus: status => this.setStatus(status),
+                onError: err => {
+                    logger.error('Live streaming error:', err);
+                    this.setStatus(`Error: ${err}`);
+                },
+                onAudioLevel: level => {
+                    this.audioLevel = level;
+                    this.requestUpdate();
+                },
+                onNote: note => {
+                    if (note) {
+                        this.notes = [...this.notes, note];
+                        this.requestUpdate();
+                    }
+                },
+                onTranscript: transcript => {
+                    if (!transcript) return;
+                    this.transcripts = [
+                        ...this.transcripts,
+                        { transcription: transcript, ai_response: '' },
+                    ];
+                    this.requestUpdate();
+                },
+            });
+        } catch (error) {
+            logger.error('Failed to start live streaming:', error);
+            this.sessionActive = false;
+            this.setStatus(`Error: ${error.message || error}`);
+            return;
+        }
+
         this.currentView = 'assistant';
     }
 
     async handleAPIKeyHelp() {
         if (window.electron?.openExternal) {
-            await window.electron.openExternal('https://cheatingdaddy.com/help/api-key');
+            await window.electron.openExternal('https://platform.openai.com/api-keys');
         }
     }
 
@@ -480,15 +464,14 @@ export class CheatingDaddyApp extends LitElement {
 
     // Assistant view event handlers
     async handleSendText(message) {
-        const result = await window.cheddar.sendTextMessage(message);
-
-        if (!result.success) {
-            logger.error('Failed to send message:', result.error);
-            this.setStatus('Error sending message: ' + result.error);
-        } else {
-            this.setStatus('Message sent...');
-            this._awaitingNewResponse = true;
+        if (!this._stopLiveStreaming?.sendText) {
+            this.setStatus('Error sending message: no active OpenAI Realtime session');
+            return;
         }
+
+        this._stopLiveStreaming.sendText(message);
+        this.setStatus('Message sent...');
+        this._awaitingNewResponse = true;
     }
 
     async handleNotesChange(e) {

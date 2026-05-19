@@ -14,7 +14,7 @@ function getKeytar() {
 }
 
 const SERVICE = 'cheating-daddy';
-const ACCOUNT = 'gemini_api_key';
+const ACCOUNT = 'openai_api_key';
 
 async function secureGetApiKey() {
     const kt = getKeytar();

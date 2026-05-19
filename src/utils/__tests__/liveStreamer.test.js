@@ -27,6 +27,14 @@ function restoreTimers(orig) {
   global.clearInterval = orig.clearInterval;
 }
 
+function setNavigatorMediaDevices(mediaDevices) {
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: { mediaDevices },
+  });
+}
+
 test('screen track end stops interval and notifies status', async () => {
   const { startLiveStreaming } = await getLiveStreamer();
   global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn() };
@@ -37,12 +45,10 @@ test('screen track end stops interval and notifies status', async () => {
     getTracks: () => [track],
   };
 
-  global.navigator = {
-    mediaDevices: {
-      getUserMedia: mock.fn(async () => { throw new Error('no audio'); }),
-      getDisplayMedia: mock.fn(async () => screenStream),
-    },
-  };
+  setNavigatorMediaDevices({
+    getUserMedia: mock.fn(async () => { throw new Error('no audio'); }),
+    getDisplayMedia: mock.fn(async () => screenStream),
+  });
 
   global.ImageCapture = class {
     constructor() {}
@@ -82,12 +88,10 @@ test('getDisplayMedia denial triggers onError', async () => {
   global.logger = { warn: mock.fn(), error: mock.fn(), info: mock.fn() };
   const err = new Error('Permission denied');
   err.name = 'NotAllowedError';
-  global.navigator = {
-    mediaDevices: {
-      getUserMedia: mock.fn(async () => { throw new Error('no audio'); }),
-      getDisplayMedia: mock.fn(async () => { throw err; }),
-    },
-  };
+  setNavigatorMediaDevices({
+    getUserMedia: mock.fn(async () => { throw new Error('no audio'); }),
+    getDisplayMedia: mock.fn(async () => { throw err; }),
+  });
 
   const onStatus = mock.fn();
   const onError = mock.fn();

@@ -91,7 +91,7 @@ let tokenTracker = {
         this.cleanOldTokens();
     },
 
-    // Calculate image tokens based on Gemini 2.0 rules
+    // Estimate image tokens for realtime screen captures.
     calculateImageTokens(width, height) {
         // Images ≤384px in both dimensions = 258 tokens
         if (width <= 384 && height <= 384) {
@@ -209,30 +209,9 @@ async function createPcmWorkletNode(ctx, onChunk) {
     }
 }
 
-async function initializeGemini(profile = 'interview', language = 'en-US') {
-    let apiKey = null;
-    try {
-        const res = await electron.secureGetApiKey?.();
-        if (res?.success && res.value) apiKey = res.value.trim();
-    } catch (_e) {
-        /* empty */
-    }
-    if (!apiKey) {
-        apiKey = localStorage.getItem('apiKey')?.trim();
-    }
-    if (apiKey) {
-        const success = await electron.initializeGemini?.(
-            apiKey,
-            localStorage.getItem('customPrompt') || '',
-            profile,
-            language
-        );
-        if (success) {
-            cheddar.setStatus('Live');
-        } else {
-            cheddar.setStatus('error');
-        }
-    }
+async function initializeRealtimeSession(_profile = 'interview', _language = 'en-US') {
+    cheddar.setStatus('Ready');
+    return true;
 }
 
 // Listen for status updates
@@ -243,7 +222,7 @@ electron.onUpdateStatus?.((_event, status) => {
 
 // Listen for responses - REMOVED: This is handled in CheatingDaddyApp.js to avoid duplicates
 // ipcRenderer.on('update-response', (event, response) => {
-//     logger.info('Gemini response:', response);
+//     logger.info('Model response:', response);
 //     cheddar.e().setResponse(response);
 //     // You can add UI elements to display the response if needed
 // });
@@ -846,7 +825,7 @@ function stopCapture() {
     offscreenContext = null;
 }
 
-// Send text message to Gemini
+// Bridge text messages into the active app session.
 async function sendTextMessage(text) {
     if (!text || text.trim().length === 0) {
         logger.warn('Cannot send empty text message');
@@ -854,13 +833,12 @@ async function sendTextMessage(text) {
     }
 
     try {
-        const result = await electron.sendTextMessage?.(text);
-        if (result.success) {
+        if (typeof cheatingDaddyApp?.handleSendText === 'function') {
+            await cheatingDaddyApp.handleSendText(text);
             logger.info('Text message sent successfully');
-        } else {
-            logger.error('Failed to send text message:', result.error);
+            return { success: true };
         }
-        return result;
+        return { success: false, error: 'No active session bridge' };
     } catch (error) {
         logger.error('Error sending text message:', error);
         return { success: false, error: error.message };
@@ -993,7 +971,7 @@ const cheddar = {
     setResponse: response => cheatingDaddyApp.setResponse(response),
 
     // Core functionality
-    initializeGemini,
+    initializeRealtimeSession,
     startCapture,
     stopCapture,
     sendTextMessage,

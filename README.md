@@ -12,7 +12,7 @@ A real-time AI assistant that provides contextual help during video calls, inter
 
 ## Features
 
-- **Live AI Assistance**: Real-time help powered by Google Gemini 2.0 Flash Live
+- **Live AI Assistance**: Real-time help powered by OpenAI Realtime
 - **Screen & Audio Capture**: Analyzes what you see and hear for contextual responses
 - **Multiple Profiles**: Interview, Sales Call, Business Meeting, Presentation, Negotiation
 - **Transparent Overlay**: Always-on-top window that can be positioned anywhere
@@ -21,14 +21,14 @@ A real-time AI assistant that provides contextual help during video calls, inter
 
 ## Setup
 
-1. **Get a Gemini API Key**: Visit [Google AI Studio](https://aistudio.google.com/apikey)
-2. **Copy the Example Environment File**: `cp .env.example .env` and add your `GEMINI_API_KEY`
+1. **Get an OpenAI API Key**: Visit [OpenAI API keys](https://platform.openai.com/api-keys)
+2. **Copy the Example Environment File**: `cp .env.example .env` and add your `OPENAI_API_KEY`
 3. **Install Dependencies**: `npm install`
 4. **Run the App**: `npm start` (starts backend and desktop client)
 
 ## Usage
 
-1. Enter your Gemini API key in the main window
+1. Enter your OpenAI API key in the main window
 2. Choose your profile and language in settings
 3. Click "Start Session" to begin
 4. Position the window using keyboard shortcuts
@@ -50,7 +50,7 @@ A real-time AI assistant that provides contextual help during video calls, inter
 ## Requirements
 
 - Electron-compatible OS (macOS, Windows, Linux)
-- Gemini API key
+- OpenAI API key
 - Screen recording permissions
 - Microphone/audio permissions
 
@@ -81,8 +81,9 @@ requirements and configuration for this feature.
 | Variable         | Description                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------- |
 | `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Cheating Daddy`.              |
-| `AUTH_TOKEN`     | Secret token required by the backend to authorize live streaming connections.               |
-| `ALLOWED_ORIGINS`| Comma-separated list of origins permitted to open live WebSocket connections.               |
+| `OPENAI_API_KEY` | Default API key used by the local backend when the desktop client does not pass one.        |
+| `OPENAI_REALTIME_MODEL` | Optional override for the realtime model. Defaults to `gpt-realtime-2`.            |
+| `OPENAI_TEXT_MODEL` | Optional override for one-shot text requests. Defaults to `gpt-5.4-mini`.                |
 
 #### IPC Channels
 

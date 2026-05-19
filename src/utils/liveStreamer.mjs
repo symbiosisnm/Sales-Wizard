@@ -2,8 +2,9 @@ import { LLMClient } from '../services/llmClient.mjs';
 import defaultLogger from './logger.js';
 import { generateNotesFromResponse } from './summarizer.mjs';
 
-// Fallback to console if the logger script fails to attach to globalThis
-const logger = globalThis.logger || defaultLogger || console;
+function getLogger() {
+  return globalThis.logger || defaultLogger || console;
+}
 
 const JPEG_MIME = 'image/jpeg';
 const JPEG_QUALITY = 0.85;
@@ -11,6 +12,15 @@ const HAVE_CURRENT_DATA =
   typeof HTMLMediaElement !== 'undefined' && typeof HTMLMediaElement.HAVE_CURRENT_DATA === 'number'
     ? HTMLMediaElement.HAVE_CURRENT_DATA
     : 2;
+
+function getMediaDevices() {
+  return (
+    globalThis.navigator?.mediaDevices ||
+    globalThis.window?.navigator?.mediaDevices ||
+    globalThis.mediaDevices ||
+    null
+  );
+}
 
 async function convertCanvasToBlob(canvas) {
   if (!canvas) {
@@ -158,7 +168,7 @@ async function createScreenFrameSource(track, stream) {
               return blob;
             }
           } catch (err) {
-            logger.warn('ImageCapture.takePhoto failed, attempting fallback:', err);
+            getLogger().warn('ImageCapture.takePhoto failed, attempting fallback:', err);
             if (typeof imageCapture.grabFrame === 'function') {
               preferGrabFrame = true;
             } else {
@@ -199,7 +209,7 @@ async function createScreenFrameSource(track, stream) {
 
       return { grabFrame, cleanup };
     } catch (err) {
-      logger.warn('ImageCapture initialisation failed, falling back to canvas:', err);
+      getLogger().warn('ImageCapture initialisation failed, falling back to canvas:', err);
     }
   }
 
@@ -229,6 +239,8 @@ export async function startLiveStreaming({
   onError = () => {},
   onAudioLevel = () => {},
   onNote = () => {},
+  onTranscript = () => {},
+  apiKey,
 }) {
   const client = new LLMClient();
   client.onText = msg => {
@@ -243,19 +255,24 @@ export async function startLiveStreaming({
         }
       }
     } catch (err) {
-      logger.warn('Error handling text:', err);
+      getLogger().warn('Error handling text:', err);
     }
   };
   client.onStatus = onStatus;
   client.onError = onError;
+  client.onTranscript = onTranscript;
 
-  await client.connect();
+  await client.connect({ apiKey });
+  const mediaDevices = getMediaDevices();
 
   // Audio capture
   let audioStream; let audioCleanup = () => {};
   try {
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (!mediaDevices?.getUserMedia) {
+      throw new Error('MediaDevices.getUserMedia is not available');
+    }
+    audioStream = await mediaDevices.getUserMedia({ audio: true });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
     const source = audioCtx.createMediaStreamSource(audioStream);
 
     const cleanup = () => {
@@ -268,12 +285,12 @@ export async function startLiveStreaming({
       try {
         await audioCtx.audioWorklet.addModule(new URL('./pcm16-worklet.js', import.meta.url));
         const node = new AudioWorkletNode(audioCtx, 'pcm16-worklet', {
-          processorOptions: { targetSampleRate: 16000, samplesPerChunk: 1600 }
+          processorOptions: { targetSampleRate: 24000, samplesPerChunk: 2400 }
         });
         node.port.onmessage = e => {
           const bytes = e.data;
           const base64 = btoa(String.fromCharCode(...bytes));
-          client.sendPcm16Base64(base64);
+          client.sendPcm16Base64(base64, 'audio/pcm;rate=24000');
           try {
             const view = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2);
             let sum = 0;
@@ -306,7 +323,7 @@ export async function startLiveStreaming({
           }
           const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
           const base64 = btoa(binary);
-          client.sendPcm16Base64(base64);
+          client.sendPcm16Base64(base64, 'audio/pcm;rate=24000');
           onAudioLevel(Math.sqrt(sum / input.length));
         };
         audioCleanup = () => {
@@ -330,7 +347,7 @@ export async function startLiveStreaming({
         }
         const binary = String.fromCharCode.apply(null, new Uint8Array(pcm.buffer));
         const base64 = btoa(binary);
-        client.sendPcm16Base64(base64);
+        client.sendPcm16Base64(base64, 'audio/pcm;rate=24000');
         onAudioLevel(Math.sqrt(sum / input.length));
       };
       audioCleanup = () => {
@@ -339,13 +356,18 @@ export async function startLiveStreaming({
       };
     }
   } catch (err) {
-    logger.warn('Audio streaming failed to initialise:', err);
+    getLogger().warn('Audio streaming failed to initialise:', err);
   }
 
   // Screen capture
   let screenStream; let frameInterval; let frameCleanup = () => {};
+  let screenCaptureStopped = false;
 
   const stopScreenCapture = () => {
+    if (screenCaptureStopped) {
+      return;
+    }
+    screenCaptureStopped = true;
     if (frameInterval) {
       clearInterval(frameInterval);
       frameInterval = null;
@@ -353,7 +375,7 @@ export async function startLiveStreaming({
     try {
       frameCleanup();
     } catch (cleanupErr) {
-      logger.warn('Error during screen capture cleanup:', cleanupErr);
+      getLogger().warn('Error during screen capture cleanup:', cleanupErr);
     }
     if (screenStream) {
       screenStream.getTracks().forEach(t => t.stop());
@@ -363,7 +385,10 @@ export async function startLiveStreaming({
   };
 
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    if (!mediaDevices?.getDisplayMedia) {
+      throw new Error('MediaDevices.getDisplayMedia is not available');
+    }
+    screenStream = await mediaDevices.getDisplayMedia({ video: true });
     const track = screenStream.getVideoTracks()[0];
     track.onended = stopScreenCapture;
     const frameSource = await createScreenFrameSource(track, screenStream);
@@ -379,21 +404,25 @@ export async function startLiveStreaming({
         const base64 = btoa(binary);
         client.sendJpegBase64(base64, blob.type || 'image/jpeg');
       } catch (err) {
-        logger.warn('Error capturing screen frame:', err);
+        getLogger().warn('Error capturing screen frame:', err);
       }
-    }, 1000);
+    }, 3000);
   } catch (err) {
     const msg = err?.name === 'NotAllowedError'
       ? 'Screen capture request was blocked or denied. Your browser may require a reload before prompting again.'
       : `Screen streaming failed to initialise: ${err?.message || err}`;
-    logger.warn(msg, err);
+    getLogger().warn(msg, err);
     onError(msg);
     stopScreenCapture();
   }
 
-  return () => {
+  const stop = () => {
     client.end();
     audioCleanup();
     stopScreenCapture();
   };
+  stop.sendText = text => {
+    client.sendText(text);
+  };
+  return stop;
 }

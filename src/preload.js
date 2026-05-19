@@ -5,22 +5,12 @@ const api = {
   getCursorPoint: () => ipcRenderer.invoke('get-cursor-point'),
   secureGetApiKey: () => ipcRenderer.invoke('secure-get-api-key'),
   secureSetApiKey: value => ipcRenderer.invoke('secure-set-api-key', value),
-  initializeGemini: (apiKey, prompt, profile, language) =>
-    ipcRenderer.invoke('initialize-gemini', apiKey, prompt, profile, language),
-  startMacosAudio: () => ipcRenderer.invoke('start-macos-audio'),
-  stopMacosAudio: () => ipcRenderer.invoke('stop-macos-audio'),
-  sendImageContent: payload => ipcRenderer.invoke('send-image-content', payload),
-  sendAudioContent: payload => ipcRenderer.invoke('send-audio-content', payload),
-  sendTextMessage: text => ipcRenderer.invoke('send-text-message', text),
-  closeSession: () => ipcRenderer.invoke('close-session'),
   quitApplication: () => ipcRenderer.invoke('quit-application'),
   toggleWindowVisibility: () => ipcRenderer.invoke('toggle-window-visibility'),
   openExternal: url => ipcRenderer.invoke('open-external', url),
   viewChanged: view => ipcRenderer.send('view-changed', view),
   updateKeybinds: keybinds => ipcRenderer.send('update-keybinds', keybinds),
   setContextParams: params => ipcRenderer.invoke('set-context-params', params),
-  updateGoogleSearchSetting: enabled =>
-    ipcRenderer.invoke('update-google-search-setting', enabled),
   updateContentProtection: enabled =>
     ipcRenderer.invoke('update-content-protection', enabled),
   getRandomDisplayName: () => ipcRenderer.invoke('get-random-display-name'),

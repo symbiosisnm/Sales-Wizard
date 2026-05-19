@@ -28,7 +28,6 @@
   },
   "license": "GPL-3.0",
   "dependencies": {
-    "@google/genai": "^1.2.0",
     "active-win": "^8.0.0",
     "dotenv": "^16.4.5",
     "electron-squirrel-startup": "^1.0.1",

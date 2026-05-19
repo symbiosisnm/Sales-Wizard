@@ -5,12 +5,12 @@ require("./utils/logger");
 
 const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
-const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
+const { sendToRenderer } = require('./utils/ipcUtils');
+const { exportSession } = require('./utils/sessionExports');
 const { registerSecureStoreIpc } = require('./utils/secureStore');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
 const { applyAntiAnalysisMeasures } = require('./utils/stealthFeatures');
 
-const geminiSessionRef = { current: null };
 let mainWindow = null;
 let contextParams = {
     allowedSources: '',
@@ -22,7 +22,7 @@ let contextParams = {
 const randomNames = initializeRandomProcessNames();
 
 function createMainWindow() {
-    mainWindow = createWindow(sendToRenderer, geminiSessionRef, randomNames);
+    mainWindow = createWindow(sendToRenderer, randomNames);
     return mainWindow;
 }
 
@@ -31,20 +31,14 @@ app.whenReady().then(async () => {
     await applyAntiAnalysisMeasures();
 
     createMainWindow();
-    setupGeminiIpcHandlers(geminiSessionRef);
     setupGeneralIpcHandlers();
     registerSecureStoreIpc();
 });
 
 app.on('window-all-closed', () => {
-    stopMacOSAudioCapture();
     if (process.platform !== 'darwin') {
         app.quit();
     }
-});
-
-app.on('before-quit', () => {
-    stopMacOSAudioCapture();
 });
 
 app.on('activate', () => {
@@ -56,7 +50,6 @@ app.on('activate', () => {
 function setupGeneralIpcHandlers() {
     ipcMain.handle('quit-application', async () => {
         try {
-            stopMacOSAudioCapture();
             app.quit();
             return { success: true };
         } catch (error) {
@@ -77,7 +70,7 @@ function setupGeneralIpcHandlers() {
 
     ipcMain.on('update-keybinds', (_event, newKeybinds) => {
         if (mainWindow) {
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer);
         }
     });
 
@@ -102,6 +95,22 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             logger.error('Error getting random display name:', error);
             return 'System Monitor';
+        }
+    });
+
+    ipcMain.handle('export-session', async (_event, options) => {
+        try {
+            const { blob, filename } = exportSession(options);
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            return {
+                success: true,
+                data: buffer.toString('base64'),
+                filename,
+                mimeType: blob.type,
+            };
+        } catch (error) {
+            logger.error('Error exporting session:', error);
+            return { success: false, error: error.message };
         }
     });
 
