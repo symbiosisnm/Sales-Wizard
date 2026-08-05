@@ -441,7 +441,7 @@ export class OnboardingView extends LitElement {
                 icon: 'assets/onboarding/welcome.svg',
                 title: `Welcome to ${getAppName()}`,
                 content:
-                    'Your AI sales assistant that listens and watches, delivering persuasive suggestions in real time to help you close more deals during interviews and meetings.',
+                    'Your live OpenAI assistant that listens, watches, and surfaces ready-to-use guidance for calls, demos, troubleshooting, support, interviews, and meetings.',
             },
             {
                 icon: 'assets/onboarding/security.svg',

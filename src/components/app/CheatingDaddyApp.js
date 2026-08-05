@@ -7,14 +7,56 @@ import '../views/HistoryView.js';
 import '../views/AssistantView.js';
 import '../views/OnboardingView.js';
 import '../views/AdvancedView.js';
-import '../views/SidePanel.js';
+import './SidePanel.js';
 
 // Live streaming helper integrates with the local OpenAI Realtime bridge.
 import { startLiveStreaming } from '../../utils/liveStreamer.mjs';
-import defaultLogger from '../../utils/logger.js';
+import { inferProfileFromFocus, normalizeProfile } from '../../utils/profileUtils.js';
 
 // Use global logger if available, falling back to the imported logger or console
-const logger = globalThis.logger || defaultLogger || console;
+const logger = globalThis.logger || console;
+
+const DEFAULT_LAUNCH_FOCUS_CONFIG = {
+    jobTitle: 'HP sales and support representative',
+    objective:
+        'Listen immediately, answer customer questions with current HP product information, and surface concise next-step guidance for sales, support, troubleshooting, demos, and recommendations.',
+    priorityTopics:
+        'HP laptops, workstations, desktops, printers, monitors, accessories, specs, compatibility, pricing, availability, warranty, support troubleshooting, and competitive positioning',
+    guidelineText:
+        'Act like a prepared HP sales/support rep. Be concise, factual, and useful. Use web results for current specs, pricing, availability, and support facts. If a model, SKU, or customer need is ambiguous, give the best current answer and ask one targeted clarifying question.',
+    webSearchEnabled: true,
+    webSearchHint:
+        'Use current HP.com product pages, HP support documentation, HP store availability, and official vendor sources first. Use other reputable sources only when they add current context.',
+};
+
+function isBlank(value) {
+    return !String(value || '').trim();
+}
+
+function isStaleOrEmptyLaunchFocus(config = {}) {
+    const coreText = [
+        config.jobTitle,
+        config.objective,
+        config.priorityTopics,
+        config.guidelineText,
+        config.webSearchHint,
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+    const roleText = String(config.jobTitle || '').trim().toLowerCase();
+
+    if (!coreText) {
+        return true;
+    }
+
+    return (
+        /\b(job\s+)?interview\b/i.test(coreText) ||
+        /please paste the exact hp\.com/i.test(coreText) ||
+        roleText === 'hp.com' ||
+        /^https?:\/\//i.test(roleText)
+    );
+}
 
 export class CheatingDaddyApp extends LitElement {
     static styles = css`
@@ -35,7 +77,10 @@ export class CheatingDaddyApp extends LitElement {
             display: block;
             width: 100%;
             height: 100vh;
-            background-color: var(--background-transparent);
+            background:
+                radial-gradient(circle at top left, rgba(96, 165, 250, 0.2), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.14), transparent 24%),
+                var(--background-transparent);
             color: var(--text-color);
         }
 
@@ -58,13 +103,14 @@ export class CheatingDaddyApp extends LitElement {
             margin-top: var(--main-content-margin-top);
             border-radius: var(--content-border-radius);
             transition: all 0.15s ease-out;
-            background: var(--main-content-background);
-            /* Add a frosted glass effect. The backdrop-filter property blurs and
-             * saturates whatever is behind the main content, giving a liquid
-             * glass look reminiscent of modern UI designs. Including the
-             * vendor prefixed version ensures support on WebKit browsers. */
-            backdrop-filter: blur(30px) saturate(180%);
-            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+                var(--main-content-background);
+            backdrop-filter: blur(34px) saturate(170%);
+            -webkit-backdrop-filter: blur(34px) saturate(170%);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 22px 60px rgba(15, 23, 42, 0.22);
         }
 
         .main-content.with-border {
@@ -79,6 +125,7 @@ export class CheatingDaddyApp extends LitElement {
         .assistant-container {
             display: flex;
             height: 100%;
+            gap: 12px;
         }
 
         .assistant-container assistant-view {
@@ -143,6 +190,20 @@ export class CheatingDaddyApp extends LitElement {
         transcripts: { type: Array },
         notes: { type: Array },
         noteText: { type: String },
+        helpCards: { type: Array },
+        primaryHelpAnswer: { type: String },
+        helpResources: { type: Array },
+        visualMatches: { type: Array },
+        matchedKnowledge: { type: Array },
+        latestScreenPreview: { type: Object },
+        importedVisualContext: { type: Object },
+        focusConfig: { type: Object },
+        focusRetrieval: { type: Object },
+        knowledgeItems: { type: Array },
+        ffmpegAvailable: { type: Boolean },
+        sessionOptions: { type: Object },
+        webIntel: { type: Object },
+        assistantPanelTab: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         _awaitingNewResponse: { state: true },
@@ -152,12 +213,18 @@ export class CheatingDaddyApp extends LitElement {
 
     constructor() {
         super();
-        this.currentView = localStorage.getItem('onboardingCompleted') ? 'main' : 'onboarding';
+        this.currentView =
+            localStorage.getItem('onboardingCompleted') || localStorage.getItem('apiKey') ? 'main' : 'onboarding';
         this.statusText = '';
         this.startTime = null;
         this.isRecording = false;
         this.sessionActive = false;
-        this.selectedProfile = localStorage.getItem('selectedProfile') || 'interview';
+        const storedProfile = normalizeProfile(localStorage.getItem('selectedProfile') || 'general');
+        const profileWasCustomized = localStorage.getItem('selectedProfileCustomized') === 'true';
+        this.selectedProfile = storedProfile === 'interview' && !profileWasCustomized ? 'general' : storedProfile;
+        if (this.selectedProfile !== storedProfile) {
+            localStorage.setItem('selectedProfile', this.selectedProfile);
+        }
         this.selectedLanguage = localStorage.getItem('selectedLanguage') || 'en-US';
         this.selectedScreenshotInterval = localStorage.getItem('selectedScreenshotInterval') || '5';
         this.selectedImageQuality = localStorage.getItem('selectedImageQuality') || 'medium';
@@ -174,7 +241,36 @@ export class CheatingDaddyApp extends LitElement {
         this.transcripts = [];
         this.notes = [];
         this.noteText = '';
+        this.helpCards = [];
+        this.primaryHelpAnswer = '';
+        this.helpResources = [];
+        this.visualMatches = [];
+        this.matchedKnowledge = [];
+        this.latestScreenPreview = null;
+        this.importedVisualContext = null;
+        this.focusConfig = this.getLaunchReadyFocusConfig(this.getStoredFocusConfig());
+        this.focusRetrieval = {
+            jobTitle: this.focusConfig.jobTitle || '',
+            objective: this.focusConfig.objective || '',
+            priorityTopics: this.focusConfig.priorityTopics || '',
+            guidelineText: this.focusConfig.guidelineText || '',
+            strictFocus: Boolean(this.focusConfig.strictFocus),
+            webSearchEnabled: Boolean(this.focusConfig.webSearchEnabled),
+            selectedKnowledgeIds: this.focusConfig.selectedKnowledgeIds || [],
+            snippets: [],
+            matchedKnowledgeItems: [],
+            resources: [],
+            visualMatches: [],
+            visualSummary: '',
+        };
+        this.knowledgeItems = [];
+        this.ffmpegAvailable = false;
+        this.sessionOptions = this.getStoredSessionOptions();
+        this.webIntel = null;
+        this.assistantPanelTab = 'help';
         this.audioLevel = 0;
+        this._focusSyncTimer = null;
+        this._autoStartAttempted = false;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -199,6 +295,10 @@ export class CheatingDaddyApp extends LitElement {
             window.electron.onClickThroughToggled?.(this._clickThroughHandler);
         }
 
+        void this.loadKnowledgeItems();
+        window.setTimeout(() => {
+            void this.autoStartIfReady();
+        }, 250);
     }
 
     disconnectedCallback() {
@@ -207,6 +307,7 @@ export class CheatingDaddyApp extends LitElement {
             this._stopLiveStreaming();
             this._stopLiveStreaming = null;
         }
+        this.clearPendingFocusSync();
 
         super.disconnectedCallback();
         if (window.electron) {
@@ -214,6 +315,333 @@ export class CheatingDaddyApp extends LitElement {
             window.electron.removeUpdateStatusListener?.(this._updateStatusHandler);
             window.electron.removeClickThroughToggledListener?.(this._clickThroughHandler);
         }
+    }
+
+    getCurrentView() {
+        return this.currentView;
+    }
+
+    getLayoutMode() {
+        return this.layoutMode;
+    }
+
+    getContentProtection() {
+        const contentProtection = localStorage.getItem('contentProtection');
+        return contentProtection !== null ? contentProtection === 'true' : false;
+    }
+
+    getCurrentContextParams() {
+        return {
+            allowedSources: localStorage.getItem('contextAllowedSources') || '',
+            toneLength: localStorage.getItem('contextToneLength') || '',
+            disallowedTopics: localStorage.getItem('contextDisallowedTopics') || '',
+        };
+    }
+
+    getCurrentCustomPrompt() {
+        return localStorage.getItem('customPrompt') || '';
+    }
+
+    getStoredFocusConfig() {
+        let selectedKnowledgeIds = [];
+        try {
+            selectedKnowledgeIds = JSON.parse(localStorage.getItem('focusSelectedKnowledgeIds') || '[]');
+        } catch (_error) {
+            selectedKnowledgeIds = [];
+        }
+        return {
+            jobTitle: localStorage.getItem('focusJobTitle') || '',
+            objective: localStorage.getItem('focusObjective') || '',
+            priorityTopics: localStorage.getItem('focusPriorityTopics') || '',
+            guidelineText: localStorage.getItem('focusGuidelineText') || '',
+            referenceText: localStorage.getItem('focusReferenceText') || '',
+            selectedKnowledgeIds: Array.isArray(selectedKnowledgeIds) ? selectedKnowledgeIds : [],
+            strictFocus: localStorage.getItem('focusStrictFocus') === 'true',
+            webSearchEnabled: localStorage.getItem('focusWebSearchEnabled') === 'true',
+            webSearchHint: localStorage.getItem('focusWebSearchHint') || '',
+        };
+    }
+
+    getLaunchReadyFocusConfig(config = {}) {
+        const selectedKnowledgeIds = Array.isArray(config.selectedKnowledgeIds) ? config.selectedKnowledgeIds : [];
+        const shouldUseDefault = isStaleOrEmptyLaunchFocus(config);
+
+        if (shouldUseDefault) {
+            return {
+                ...config,
+                ...DEFAULT_LAUNCH_FOCUS_CONFIG,
+                referenceText: config.referenceText || '',
+                selectedKnowledgeIds,
+                strictFocus: false,
+                webSearchEnabled: true,
+            };
+        }
+
+        return {
+            ...config,
+            selectedKnowledgeIds,
+            webSearchEnabled: true,
+            webSearchHint: isBlank(config.webSearchHint)
+                ? 'Use current official product pages, support documentation, pricing/availability pages, and task-relevant reputable sources.'
+                : config.webSearchHint,
+        };
+    }
+
+    persistFocusConfig(config = {}) {
+        localStorage.setItem('focusJobTitle', config.jobTitle || '');
+        localStorage.setItem('focusObjective', config.objective || '');
+        localStorage.setItem('focusPriorityTopics', config.priorityTopics || '');
+        localStorage.setItem('focusGuidelineText', config.guidelineText || '');
+        localStorage.setItem('focusReferenceText', config.referenceText || '');
+        localStorage.setItem('focusSelectedKnowledgeIds', JSON.stringify(config.selectedKnowledgeIds || []));
+        localStorage.setItem('focusStrictFocus', config.strictFocus ? 'true' : 'false');
+        localStorage.setItem('focusWebSearchEnabled', config.webSearchEnabled ? 'true' : 'false');
+        localStorage.setItem('focusWebSearchHint', config.webSearchHint || '');
+    }
+
+    getStoredSessionOptions() {
+        return {
+            captureSystemAudio: localStorage.getItem('sessionCaptureSystemAudio') === 'true',
+            rememberImports: localStorage.getItem('sessionRememberImports') === 'true',
+            videoAssistMode: localStorage.getItem('sessionVideoAssistMode') || 'rolling-clip',
+            clipWindowSeconds: Number.parseInt(localStorage.getItem('sessionClipWindowSeconds') || '8', 10) || 8,
+        };
+    }
+
+    persistSessionOptions(options = {}) {
+        localStorage.setItem('sessionCaptureSystemAudio', options.captureSystemAudio ? 'true' : 'false');
+        localStorage.setItem('sessionRememberImports', options.rememberImports ? 'true' : 'false');
+        localStorage.setItem('sessionVideoAssistMode', options.videoAssistMode || 'rolling-clip');
+        localStorage.setItem('sessionClipWindowSeconds', String(options.clipWindowSeconds || 8));
+    }
+
+    getCurrentFocusConfig() {
+        return {
+            ...(this.focusConfig || {}),
+        };
+    }
+
+    async autoStartIfReady() {
+        if (this._autoStartAttempted || this.sessionActive || this._stopLiveStreaming) {
+            return;
+        }
+        this._autoStartAttempted = true;
+
+        const apiKey = await this.resolveApiKey();
+        const launchFocusConfig = this.getLaunchReadyFocusConfig(this.getStoredFocusConfig());
+        this.focusConfig = launchFocusConfig;
+        this.persistFocusConfig(launchFocusConfig);
+
+        if (!apiKey) {
+            this.setStatus('Enter an OpenAI API key to start live mode');
+            return;
+        }
+
+        localStorage.setItem('onboardingCompleted', 'true');
+        if (this.currentView !== 'main') {
+            this.currentView = 'main';
+            await this.updateComplete;
+        }
+        this.setStatus('OpenAI key found. Starting live assistant...');
+        await this.handleStart();
+    }
+
+    async loadKnowledgeItems() {
+        if (!window.electron?.knowledgeList) {
+            return;
+        }
+        try {
+            const res = await window.electron.knowledgeList({
+                sessionId: this.sessionId || '',
+                scope: this.sessionId ? undefined : 'library',
+            });
+            if (res?.success) {
+                this.knowledgeItems = Array.isArray(res.items) ? res.items : [];
+                this.ffmpegAvailable = Boolean(res.ffmpegAvailable);
+                this.requestUpdate();
+            }
+        } catch (error) {
+            logger.error('Failed to load knowledge items:', error);
+        }
+    }
+
+    resolveActiveProfile(focusConfig = this.focusConfig) {
+        const fallbackProfile = this.selectedProfile === 'interview' ? 'general' : this.selectedProfile || 'general';
+        return inferProfileFromFocus(focusConfig, fallbackProfile);
+    }
+
+    getLatestTurnText() {
+        const latestTurn = this.transcripts.at(-1);
+        return latestTurn?.transcription || '';
+    }
+
+    getActiveVisualPreview() {
+        return this.importedVisualContext?.previewDataUrl || this.latestScreenPreview?.dataUrl || '';
+    }
+
+    clearPendingFocusSync() {
+        if (this._focusSyncTimer) {
+            clearTimeout(this._focusSyncTimer);
+            this._focusSyncTimer = null;
+        }
+    }
+
+    scheduleLiveFocusSync(config, profile) {
+        if (!this._stopLiveStreaming?.updateFocusConfig) {
+            return;
+        }
+
+        this.clearPendingFocusSync();
+        this._focusSyncTimer = setTimeout(() => {
+            this._focusSyncTimer = null;
+            this._stopLiveStreaming?.updateFocusConfig?.(config, profile);
+        }, 320);
+    }
+
+    async stopCapture() {
+        this.clearPendingFocusSync();
+        if (this._stopLiveStreaming) {
+            this._stopLiveStreaming();
+            this._stopLiveStreaming = null;
+        }
+        this.sessionActive = false;
+        this.audioLevel = 0;
+        this.currentView = 'main';
+        this.setStatus('Session closed');
+    }
+
+    async handleShortcut(shortcutKey) {
+        if (shortcutKey !== 'ctrl+enter' && shortcutKey !== 'cmd+enter') {
+            return;
+        }
+
+        if (this.currentView === 'main') {
+            await this.handleStart();
+            return;
+        }
+
+        if (this.currentView === 'assistant') {
+            await this.refreshHelpFromCurrentTurn();
+        }
+    }
+
+    async refreshHelpFromCurrentTurn() {
+        if (!this._stopLiveStreaming?.refreshResponse) {
+            this.setStatus('No active OpenAI session to refresh');
+            return;
+        }
+
+        const turnText = this.getLatestTurnText();
+        if (!turnText) {
+            this.setStatus('No current turn available to refresh');
+            return;
+        }
+
+        this.setStatus('Refreshing answer and help...');
+        await this._stopLiveStreaming.refreshResponse(turnText, true);
+    }
+
+    async applyVisualContext(context, { stage = 'final' } = {}) {
+        this.importedVisualContext = context;
+        this.assistantPanelTab = 'visuals';
+        this.requestUpdate();
+
+        if (stage === 'final' && this.sessionOptions?.rememberImports) {
+            void this.rememberVisualImport(context);
+        }
+
+        if (!this._stopLiveStreaming?.setVisualContext) {
+            return;
+        }
+
+        this._stopLiveStreaming.setVisualContext(context);
+        const latestTurn = this.getLatestTurnText();
+        if (!latestTurn) {
+            if (context?.processing) {
+                this.setStatus('Visual preview ready. Sampling the rest of the video...');
+            } else {
+                this.setStatus(context?.kind === 'video' ? 'Video context loaded' : 'Image context loaded');
+            }
+            return;
+        }
+
+        if (stage === 'preview') {
+            this.setStatus('Visual preview ready. Refreshing the live answer...');
+            await this._stopLiveStreaming.refreshResponse(latestTurn, true);
+            return;
+        }
+
+        if (context?.kind === 'video') {
+            this.setStatus('Video context enriched. Refreshing visual help...');
+            await this._stopLiveStreaming.refreshHelp(latestTurn);
+            return;
+        }
+
+        await this.refreshHelpFromCurrentTurn();
+    }
+
+    clearVisualContext() {
+        this.importedVisualContext = null;
+        this.requestUpdate();
+        if (this._stopLiveStreaming?.clearVisualContext) {
+            this._stopLiveStreaming.clearVisualContext();
+        }
+    }
+
+    async resolveApiKey() {
+        let apiKey = localStorage.getItem('apiKey')?.trim();
+        if (!apiKey && window.electron?.secureGetApiKey) {
+            try {
+                const res = await window.electron.secureGetApiKey();
+                if (res?.success && res.value) {
+                    apiKey = res.value.trim();
+                    localStorage.setItem('apiKey', apiKey);
+                }
+            } catch (_error) {
+                /* empty */
+            }
+        }
+        return apiKey || '';
+    }
+
+    async rememberVisualImport(context) {
+        if (!context?.filePath || !window.electron?.knowledgeImportFile) {
+            return;
+        }
+        const apiKey = await this.resolveApiKey();
+        if (!apiKey) {
+            return;
+        }
+        try {
+            const res = await window.electron.knowledgeImportFile({
+                apiKey,
+                kindHint: context.kind,
+                path: context.filePath,
+                scope: 'library',
+                sessionId: this.sessionId || '',
+                title: context.label || context.fileName || '',
+            });
+            if (res?.success && res.item) {
+                const selectedKnowledgeIds = [
+                    ...new Set([...(this.focusConfig.selectedKnowledgeIds || []), res.item.id]),
+                ];
+                this.focusConfig = {
+                    ...this.focusConfig,
+                    selectedKnowledgeIds,
+                };
+                this.persistFocusConfig(this.focusConfig);
+                await this.loadKnowledgeItems();
+                if (this._stopLiveStreaming?.updateFocusConfig) {
+                    this.scheduleLiveFocusSync(this.focusConfig, this.resolveActiveProfile(this.focusConfig));
+                }
+            }
+        } catch (error) {
+            logger.error('Failed to remember imported visual:', error);
+        }
+    }
+
+    handleToggleMicrophone() {
+        return this._stopLiveStreaming?.toggleMicrophone?.() ?? false;
     }
 
     setStatus(text) {
@@ -324,13 +752,7 @@ export class CheatingDaddyApp extends LitElement {
         if (this.currentView === 'customize' || this.currentView === 'help' || this.currentView === 'history') {
             this.currentView = 'main';
         } else if (this.currentView === 'assistant') {
-            if (this._stopLiveStreaming) {
-                this._stopLiveStreaming();
-                this._stopLiveStreaming = null;
-            }
-            this.sessionActive = false;
-            this.audioLevel = 0;
-            this.currentView = 'main';
+            await this.stopCapture();
             logger.info('Session closed');
         } else {
             // Quit the entire application
@@ -348,8 +770,12 @@ export class CheatingDaddyApp extends LitElement {
 
     // Main view event handlers
     async handleStart() {
-        // check if api key is empty do nothing
-        const apiKey = localStorage.getItem('apiKey')?.trim();
+        const liveFocusConfig = this.getLaunchReadyFocusConfig(this.getStoredFocusConfig());
+        this.focusConfig = liveFocusConfig;
+        this.persistFocusConfig(liveFocusConfig);
+        const activeProfile = this.resolveActiveProfile(liveFocusConfig);
+        const apiKey = await this.resolveApiKey();
+
         if (!apiKey || apiKey === '') {
             // Trigger the red blink animation on the API key input
             const mainView = this.shadowRoot.querySelector('main-view');
@@ -370,7 +796,31 @@ export class CheatingDaddyApp extends LitElement {
         this.transcripts = [];
         this.notes = [];
         this.noteText = '';
+        this.helpCards = [];
+        this.primaryHelpAnswer = '';
+        this.helpResources = [];
+        this.visualMatches = [];
+        this.matchedKnowledge = [];
+        this.latestScreenPreview = null;
+        this.focusRetrieval = {
+            jobTitle: liveFocusConfig.jobTitle || '',
+            objective: liveFocusConfig.objective || '',
+            priorityTopics: liveFocusConfig.priorityTopics || '',
+            guidelineText: liveFocusConfig.guidelineText || '',
+            strictFocus: Boolean(liveFocusConfig.strictFocus),
+            webSearchEnabled: Boolean(liveFocusConfig.webSearchEnabled),
+            selectedKnowledgeIds: liveFocusConfig.selectedKnowledgeIds || [],
+            snippets: [],
+            matchedKnowledgeItems: [],
+            resources: [],
+            visualMatches: [],
+            visualSummary: '',
+        };
+        this.webIntel = null;
+        this.assistantPanelTab = 'help';
         this.sessionActive = true;
+        this.currentView = 'assistant';
+        this.setStatus('Connecting to OpenAI Realtime...');
         try {
             await fetch(`http://localhost:3001/history/${this.sessionId}/turn`, {
                 method: 'POST',
@@ -384,6 +834,13 @@ export class CheatingDaddyApp extends LitElement {
         try {
             this._stopLiveStreaming = await startLiveStreaming({
                 apiKey,
+                contextParams: this.getCurrentContextParams(),
+                customPrompt: this.getCurrentCustomPrompt(),
+                focusConfig: liveFocusConfig,
+                imageQuality: this.selectedImageQuality,
+                language: this.selectedLanguage,
+                sessionId: this.sessionId,
+                sessionOptions: this.sessionOptions,
                 onResponse: response => {
                     if (response) this.setResponse(response);
                 },
@@ -410,15 +867,62 @@ export class CheatingDaddyApp extends LitElement {
                     ];
                     this.requestUpdate();
                 },
+                onHelpCards: payload => {
+                    this.helpCards = Array.isArray(payload?.cards) ? payload.cards.slice(0, 5) : [];
+                    this.primaryHelpAnswer = payload?.primary_answer || '';
+                    this.helpResources = Array.isArray(payload?.resources) ? payload.resources : [];
+                    this.visualMatches = Array.isArray(payload?.visual_matches) ? payload.visual_matches : [];
+                    this.matchedKnowledge = Array.isArray(payload?.matched_knowledge) ? payload.matched_knowledge : [];
+                    if (payload?.retrieval) {
+                        this.focusRetrieval = payload.retrieval;
+                    }
+                    if (payload?.web_intel) {
+                        this.webIntel = payload.web_intel;
+                    }
+                    if (payload?.should_surface) {
+                        this.assistantPanelTab = 'help';
+                    }
+                    this.requestUpdate();
+                },
+                onScreenPreview: preview => {
+                    this.latestScreenPreview = preview;
+                    this.requestUpdate();
+                },
+                onVisualContext: context => {
+                    if (!context) {
+                        this.importedVisualContext = null;
+                    } else {
+                        this.importedVisualContext = {
+                            ...(this.importedVisualContext || {}),
+                            ...context,
+                            images: this.importedVisualContext?.images || context.images || [],
+                        };
+                    }
+                    this.requestUpdate();
+                },
+                onFocusContext: focus => {
+                    if (focus) {
+                        this.focusRetrieval = focus;
+                        this.requestUpdate();
+                    }
+                },
+                profile: activeProfile,
+                screenshotIntervalSeconds: this.selectedScreenshotInterval,
             });
+            await this.loadKnowledgeItems();
+            if (this.importedVisualContext) {
+                this._stopLiveStreaming.setVisualContext(this.importedVisualContext);
+            }
+            if (liveFocusConfig) {
+                this._stopLiveStreaming.updateFocusConfig?.(liveFocusConfig, activeProfile);
+            }
         } catch (error) {
             logger.error('Failed to start live streaming:', error);
             this.sessionActive = false;
+            this.currentView = 'main';
             this.setStatus(`Error: ${error.message || error}`);
             return;
         }
-
-        this.currentView = 'assistant';
     }
 
     async handleAPIKeyHelp() {
@@ -429,7 +933,8 @@ export class CheatingDaddyApp extends LitElement {
 
     // Customize view event handlers
     handleProfileChange(profile) {
-        this.selectedProfile = profile;
+        this.selectedProfile = normalizeProfile(profile);
+        localStorage.setItem('selectedProfileCustomized', 'true');
     }
 
     handleLanguageChange(language) {
@@ -469,6 +974,10 @@ export class CheatingDaddyApp extends LitElement {
             return;
         }
 
+        this.transcripts = [
+            ...this.transcripts,
+            { transcription: message, ai_response: '' },
+        ];
         this._stopLiveStreaming.sendText(message);
         this.setStatus('Message sent...');
         this._awaitingNewResponse = true;
@@ -495,6 +1004,197 @@ export class CheatingDaddyApp extends LitElement {
         this.requestUpdate();
     }
 
+    handleAssistantPanelTabChange(e) {
+        this.assistantPanelTab = e.detail?.tab || 'help';
+    }
+
+    async handleVisualContextChange(e) {
+        const context = e.detail?.context || null;
+        if (!context) return;
+        await this.applyVisualContext(context, {
+            stage: e.detail?.stage || 'final',
+        });
+    }
+
+    handleVisualContextClear() {
+        this.clearVisualContext();
+    }
+
+    async handleFocusConfigChange(e) {
+        const nextConfig = {
+            ...this.getCurrentFocusConfig(),
+            ...(e.detail?.config || {}),
+        };
+        const activeProfile = this.resolveActiveProfile(nextConfig);
+        this.focusConfig = nextConfig;
+        this.persistFocusConfig(nextConfig);
+        this.focusRetrieval = {
+            ...this.focusRetrieval,
+            jobTitle: nextConfig.jobTitle || '',
+            objective: nextConfig.objective || '',
+            priorityTopics: nextConfig.priorityTopics || '',
+            guidelineText: nextConfig.guidelineText || '',
+            strictFocus: Boolean(nextConfig.strictFocus),
+            webSearchEnabled: Boolean(nextConfig.webSearchEnabled),
+            selectedKnowledgeIds: nextConfig.selectedKnowledgeIds || [],
+        };
+        this.requestUpdate();
+
+        if (this._stopLiveStreaming?.updateFocusConfig) {
+            this.scheduleLiveFocusSync(nextConfig, activeProfile);
+        }
+    }
+
+    handleSessionOptionsChange(e) {
+        const nextOptions = {
+            ...this.sessionOptions,
+            ...(e.detail?.options || {}),
+        };
+        this.sessionOptions = nextOptions;
+        this.persistSessionOptions(nextOptions);
+        this.requestUpdate();
+        if (this._stopLiveStreaming?.updateSessionOptions) {
+            this._stopLiveStreaming.updateSessionOptions(nextOptions);
+        }
+    }
+
+    async handleKnowledgeImportUrl(e) {
+        if (!window.electron?.knowledgeImportUrl) {
+            return;
+        }
+        const url = e.detail?.url || '';
+        if (!url) {
+            return;
+        }
+        const apiKey = await this.resolveApiKey();
+        if (!apiKey) {
+            this.setStatus('Add an OpenAI API key before importing knowledge');
+            return;
+        }
+        const res = await window.electron.knowledgeImportUrl({
+            apiKey,
+            url,
+            scope: e.detail?.scope || 'library',
+            sessionId: this.sessionId || '',
+            title: e.detail?.title || '',
+        });
+        if (res?.success) {
+            await this.loadKnowledgeItems();
+            this.setStatus('Saved link to knowledge library');
+        } else if (!res?.canceled) {
+            this.setStatus(`Knowledge import failed: ${res?.error || 'unknown error'}`);
+        }
+    }
+
+    async handleKnowledgeImportGuideline(e) {
+        if (!window.electron?.knowledgeImportGuideline) {
+            return;
+        }
+        const text = e.detail?.text || this.focusConfig.guidelineText || '';
+        if (!text.trim()) {
+            return;
+        }
+        const apiKey = await this.resolveApiKey();
+        if (!apiKey) {
+            this.setStatus('Add an OpenAI API key before saving guidelines');
+            return;
+        }
+        const res = await window.electron.knowledgeImportGuideline({
+            apiKey,
+            text,
+            title: e.detail?.title || this.focusConfig.jobTitle || 'Guidelines',
+            scope: e.detail?.scope || 'library',
+            sessionId: this.sessionId || '',
+        });
+        if (res?.success) {
+            await this.loadKnowledgeItems();
+            const selectedKnowledgeIds = [
+                ...new Set([...(this.focusConfig.selectedKnowledgeIds || []), res.item.id]),
+            ];
+            this.focusConfig = {
+                ...this.focusConfig,
+                selectedKnowledgeIds,
+            };
+            this.persistFocusConfig(this.focusConfig);
+            this.requestUpdate();
+            if (this._stopLiveStreaming?.updateFocusConfig) {
+                this.scheduleLiveFocusSync(this.focusConfig, this.resolveActiveProfile(this.focusConfig));
+            }
+            this.setStatus('Saved guidelines to knowledge library');
+        } else {
+            this.setStatus(`Guideline save failed: ${res?.error || 'unknown error'}`);
+        }
+    }
+
+    async handleKnowledgeImportFile(e) {
+        if (!window.electron?.knowledgeImportFile) {
+            return;
+        }
+        const apiKey = await this.resolveApiKey();
+        if (!apiKey) {
+            this.setStatus('Add an OpenAI API key before importing files');
+            return;
+        }
+        const res = await window.electron.knowledgeImportFile({
+            apiKey,
+            scope: e.detail?.scope || 'library',
+            sessionId: this.sessionId || '',
+            kindHint: e.detail?.kindHint || '',
+        });
+        if (res?.success) {
+            await this.loadKnowledgeItems();
+            this.setStatus('Imported file into knowledge library');
+        } else if (!res?.canceled) {
+            this.setStatus(`File import failed: ${res?.error || 'unknown error'}`);
+        }
+    }
+
+    handleKnowledgeSelectionChange(e) {
+        const itemId = e.detail?.id || '';
+        const selected = Boolean(e.detail?.selected);
+        if (!itemId) {
+            return;
+        }
+        const selectedSet = new Set(this.focusConfig.selectedKnowledgeIds || []);
+        if (selected) {
+            selectedSet.add(itemId);
+        } else {
+            selectedSet.delete(itemId);
+        }
+        this.handleFocusConfigChange({
+            detail: {
+                config: {
+                    selectedKnowledgeIds: [...selectedSet],
+                },
+            },
+        });
+    }
+
+    async handleKnowledgeDelete(e) {
+        if (!window.electron?.knowledgeDelete) {
+            return;
+        }
+        const id = e.detail?.id || '';
+        if (!id) {
+            return;
+        }
+        const res = await window.electron.knowledgeDelete({ id });
+        if (res?.success) {
+            const selectedKnowledgeIds = (this.focusConfig.selectedKnowledgeIds || []).filter(itemId => itemId !== id);
+            this.focusConfig = {
+                ...this.focusConfig,
+                selectedKnowledgeIds,
+            };
+            this.persistFocusConfig(this.focusConfig);
+            await this.loadKnowledgeItems();
+            if (this._stopLiveStreaming?.updateFocusConfig) {
+                this.scheduleLiveFocusSync(this.focusConfig, this.resolveActiveProfile(this.focusConfig));
+            }
+        } else {
+            this.setStatus(`Knowledge delete failed: ${res?.error || 'unknown error'}`);
+        }
+    }
+
     // Onboarding event handlers
     handleOnboardingComplete() {
         this.currentView = 'main';
@@ -506,6 +1206,11 @@ export class CheatingDaddyApp extends LitElement {
         // Only notify main process of view change if the view actually changed
         if (changedProperties.has('currentView') && window.electron?.viewChanged) {
             window.electron.viewChanged(this.currentView);
+            if (window.electron?.updateSizes) {
+                window.electron.updateSizes().catch(error => {
+                    logger.error('Failed to update sizes in main process:', error);
+                });
+            }
 
             // Add a small delay to smooth out the transition
             const viewContainer = this.shadowRoot?.querySelector('.view-container');
@@ -539,6 +1244,7 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     renderCurrentView() {
+        const activeProfile = this.resolveActiveProfile();
         // Only re-render the view if it hasn't been cached or if critical properties changed
         switch (this.currentView) {
             case 'onboarding':
@@ -549,9 +1255,16 @@ export class CheatingDaddyApp extends LitElement {
             case 'main':
                 return html`
                     <main-view
+                        .focusConfig=${this.focusConfig}
+                        .knowledgeItems=${this.knowledgeItems}
+                        .sessionOptions=${this.sessionOptions}
+                        .ffmpegAvailable=${this.ffmpegAvailable}
                         .onStart=${() => this.handleStart()}
                         .onAPIKeyHelp=${() => this.handleAPIKeyHelp()}
                         .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
+                        @focus-config-change=${e => this.handleFocusConfigChange(e)}
+                        @session-options-change=${e => this.handleSessionOptionsChange(e)}
+                        @knowledge-selection-change=${e => this.handleKnowledgeSelectionChange(e)}
                     ></main-view>
                 `;
 
@@ -564,12 +1277,17 @@ export class CheatingDaddyApp extends LitElement {
                         .selectedImageQuality=${this.selectedImageQuality}
                         .layoutMode=${this.layoutMode}
                         .advancedMode=${this.advancedMode}
+                        .focusConfig=${this.focusConfig}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
                         .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
                         .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
                         .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
                         .onAdvancedModeChange=${advancedMode => this.handleAdvancedModeChange(advancedMode)}
+                        .onFocusConfigChange=${config =>
+                            this.handleFocusConfigChange({
+                                detail: { config },
+                            })}
                     ></customize-view>
                 `;
 
@@ -588,7 +1306,8 @@ export class CheatingDaddyApp extends LitElement {
                         <assistant-view
                             .responses=${this.responses}
                             .currentResponseIndex=${this.currentResponseIndex}
-                            .selectedProfile=${this.selectedProfile}
+                            .selectedProfile=${activeProfile}
+                            .focusConfig=${this.focusConfig}
                             .onSendText=${message => this.handleSendText(message)}
                             .shouldAnimateResponse=${this.shouldAnimateResponse}
                             @response-index-changed=${this.handleResponseIndexChanged}
@@ -600,10 +1319,34 @@ export class CheatingDaddyApp extends LitElement {
                             }}
                         ></assistant-view>
                         <side-panel
+                            .assistantPanelTab=${this.assistantPanelTab}
+                            .helpCards=${this.helpCards}
+                            .primaryAnswer=${this.primaryHelpAnswer}
+                            .helpResources=${this.helpResources}
+                            .visualMatches=${this.visualMatches}
+                            .matchedKnowledge=${this.matchedKnowledge}
+                            .focusConfig=${this.focusConfig}
+                            .focusRetrieval=${this.focusRetrieval}
+                            .knowledgeItems=${this.knowledgeItems}
+                            .sessionOptions=${this.sessionOptions}
+                            .ffmpegAvailable=${this.ffmpegAvailable}
+                            .webIntel=${this.webIntel}
+                            .importedVisualContext=${this.importedVisualContext}
+                            .latestScreenPreview=${this.latestScreenPreview}
                             .notes=${this.noteText}
                             .transcripts=${this.transcripts}
-                            .selectedProfile=${this.selectedProfile}
+                            .selectedProfile=${activeProfile}
+                            @assistant-panel-tab-change=${e => this.handleAssistantPanelTabChange(e)}
                             @notes-change=${e => this.handleNotesChange(e)}
+                            @visual-context-change=${e => this.handleVisualContextChange(e)}
+                            @visual-context-clear=${() => this.handleVisualContextClear()}
+                            @focus-config-change=${e => this.handleFocusConfigChange(e)}
+                            @session-options-change=${e => this.handleSessionOptionsChange(e)}
+                            @knowledge-import-url=${e => this.handleKnowledgeImportUrl(e)}
+                            @knowledge-import-guideline=${e => this.handleKnowledgeImportGuideline(e)}
+                            @knowledge-import-file=${e => this.handleKnowledgeImportFile(e)}
+                            @knowledge-selection-change=${e => this.handleKnowledgeSelectionChange(e)}
+                            @knowledge-delete=${e => this.handleKnowledgeDelete(e)}
                         ></side-panel>
                     </div>
                 `;

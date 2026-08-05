@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
+import { PROFILE_NAME_MAP, PROFILE_OPTIONS, normalizeProfile } from '../../utils/profileUtils.js';
 
 export class CustomizeView extends LitElement {
     static styles = css`
@@ -405,12 +406,20 @@ export class CustomizeView extends LitElement {
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
         keybinds: { type: Object },
-        googleSearchEnabled: { type: Boolean },
+        openAiWebSearchEnabled: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         allowedSources: { type: String },
         toneLength: { type: String },
         disallowedTopics: { type: String },
+        focusConfig: { type: Object },
+        focusJobTitle: { type: String },
+        focusObjective: { type: String },
+        focusPriorityTopics: { type: String },
+        focusReferenceText: { type: String },
+        strictFocus: { type: Boolean },
+        webSearchEnabled: { type: Boolean },
+        webSearchHint: { type: String },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
@@ -418,13 +427,14 @@ export class CustomizeView extends LitElement {
         onLayoutModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
+        onFocusConfigChange: { type: Function },
         screenshotRegionMode: { type: String },
         enableTTS: { type: Boolean },
     };
 
     constructor() {
         super();
-        this.selectedProfile = 'interview';
+        this.selectedProfile = 'general';
         this.selectedLanguage = 'en-US';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
@@ -436,9 +446,9 @@ export class CustomizeView extends LitElement {
         this.onImageQualityChange = () => {};
         this.onLayoutModeChange = () => {};
         this.onAdvancedModeChange = () => {};
+        this.onFocusConfigChange = () => {};
 
-        // Google Search default
-        this.googleSearchEnabled = true;
+        this.openAiWebSearchEnabled = true;
 
         // Advanced mode default
         this.advancedMode = false;
@@ -457,9 +467,17 @@ export class CustomizeView extends LitElement {
         this.allowedSources = localStorage.getItem('contextAllowedSources') || '';
         this.toneLength = localStorage.getItem('contextToneLength') || '';
         this.disallowedTopics = localStorage.getItem('contextDisallowedTopics') || '';
+        this.focusConfig = {};
+        this.focusJobTitle = localStorage.getItem('focusJobTitle') || '';
+        this.focusObjective = localStorage.getItem('focusObjective') || '';
+        this.focusPriorityTopics = localStorage.getItem('focusPriorityTopics') || '';
+        this.focusReferenceText = localStorage.getItem('focusReferenceText') || '';
+        this.strictFocus = localStorage.getItem('focusStrictFocus') === 'true';
+        this.webSearchEnabled = localStorage.getItem('focusWebSearchEnabled') === 'true';
+        this.webSearchHint = localStorage.getItem('focusWebSearchHint') || '';
 
         this.loadKeybinds();
-        this.loadGoogleSearchSettings();
+        this.loadOpenAiWebSearchSettings();
         this.loadScreenshotRegionMode();
         this.loadTtsSetting();
         this.loadAdvancedModeSettings();
@@ -478,39 +496,20 @@ export class CustomizeView extends LitElement {
         resizeLayout();
     }
 
+    willUpdate(changedProperties) {
+        if (changedProperties.has('focusConfig') && this.focusConfig) {
+            this.focusJobTitle = this.focusConfig.jobTitle || this.focusJobTitle;
+            this.focusObjective = this.focusConfig.objective || this.focusObjective;
+            this.focusPriorityTopics = this.focusConfig.priorityTopics || this.focusPriorityTopics;
+            this.focusReferenceText = this.focusConfig.referenceText || this.focusReferenceText;
+            this.strictFocus = Boolean(this.focusConfig.strictFocus);
+            this.webSearchEnabled = Boolean(this.focusConfig.webSearchEnabled);
+            this.webSearchHint = this.focusConfig.webSearchHint || this.webSearchHint;
+        }
+    }
+
     getProfiles() {
-        return [
-            {
-                value: 'interview',
-                name: 'Job Interview',
-                description: 'Get help with answering interview questions',
-            },
-            {
-                value: 'sales',
-                name: 'Sales Call',
-                description: 'Assist with sales conversations and objection handling',
-            },
-            {
-                value: 'meeting',
-                name: 'Business Meeting',
-                description: 'Support for professional meetings and discussions',
-            },
-            {
-                value: 'presentation',
-                name: 'Presentation',
-                description: 'Help with presentations and public speaking',
-            },
-            {
-                value: 'negotiation',
-                name: 'Negotiation',
-                description: 'Guidance for business negotiations and deals',
-            },
-            {
-                value: 'exam',
-                name: 'Exam Assistant',
-                description: 'Academic assistance for test-taking and exam questions',
-            },
-        ];
+        return PROFILE_OPTIONS;
     }
 
     getLanguages() {
@@ -549,18 +548,11 @@ export class CustomizeView extends LitElement {
     }
 
     getProfileNames() {
-        return {
-            interview: 'Job Interview',
-            sales: 'Sales Call',
-            meeting: 'Business Meeting',
-            presentation: 'Presentation',
-            negotiation: 'Negotiation',
-            exam: 'Exam Assistant',
-        };
+        return PROFILE_NAME_MAP;
     }
 
     handleProfileSelect(e) {
-        this.selectedProfile = e.target.value;
+        this.selectedProfile = normalizeProfile(e.target.value);
         localStorage.setItem('selectedProfile', this.selectedProfile);
         this.onProfileChange(this.selectedProfile);
     }
@@ -601,6 +593,60 @@ export class CustomizeView extends LitElement {
         this.updateContextParams();
     }
 
+    emitFocusConfig() {
+        this.onFocusConfigChange({
+            jobTitle: this.focusJobTitle,
+            objective: this.focusObjective,
+            priorityTopics: this.focusPriorityTopics,
+            referenceText: this.focusReferenceText,
+            strictFocus: this.strictFocus,
+            webSearchEnabled: this.webSearchEnabled,
+            webSearchHint: this.webSearchHint,
+        });
+    }
+
+    handleFocusJobTitleChange(e) {
+        this.focusJobTitle = e.target.value;
+        localStorage.setItem('focusJobTitle', this.focusJobTitle);
+        this.emitFocusConfig();
+    }
+
+    handleFocusObjectiveChange(e) {
+        this.focusObjective = e.target.value;
+        localStorage.setItem('focusObjective', this.focusObjective);
+        this.emitFocusConfig();
+    }
+
+    handleFocusPriorityTopicsChange(e) {
+        this.focusPriorityTopics = e.target.value;
+        localStorage.setItem('focusPriorityTopics', this.focusPriorityTopics);
+        this.emitFocusConfig();
+    }
+
+    handleFocusReferenceTextChange(e) {
+        this.focusReferenceText = e.target.value;
+        localStorage.setItem('focusReferenceText', this.focusReferenceText);
+        this.emitFocusConfig();
+    }
+
+    handleStrictFocusChange(e) {
+        this.strictFocus = e.target.checked;
+        localStorage.setItem('focusStrictFocus', this.strictFocus.toString());
+        this.emitFocusConfig();
+    }
+
+    handleWebSearchEnabledChange(e) {
+        this.webSearchEnabled = e.target.checked;
+        localStorage.setItem('focusWebSearchEnabled', this.webSearchEnabled.toString());
+        this.emitFocusConfig();
+    }
+
+    handleWebSearchHintChange(e) {
+        this.webSearchHint = e.target.value;
+        localStorage.setItem('focusWebSearchHint', this.webSearchHint);
+        this.emitFocusConfig();
+    }
+
     handleScreenshotIntervalSelect(e) {
         this.selectedScreenshotInterval = e.target.value;
         localStorage.setItem('selectedScreenshotInterval', this.selectedScreenshotInterval);
@@ -623,7 +669,7 @@ export class CustomizeView extends LitElement {
     }
 
     getDefaultKeybinds() {
-        const isMac = cheddar.isMacOS || navigator.platform.includes('Mac');
+        const isMac = navigator.platform.includes('Mac');
         return {
             moveUp: isMac ? 'Alt+Up' : 'Ctrl+Up',
             moveDown: isMac ? 'Alt+Down' : 'Ctrl+Down',
@@ -720,8 +766,8 @@ export class CustomizeView extends LitElement {
             },
             {
                 key: 'nextStep',
-                name: 'Ask Next Step',
-                description: 'Take screenshot and ask AI for the next step suggestion',
+                name: 'Refresh Help',
+                description: 'Refresh live help from the latest turn and current screen context',
             },
             {
                 key: 'previousResponse',
@@ -820,24 +866,23 @@ export class CustomizeView extends LitElement {
         e.target.blur();
     }
 
-    loadGoogleSearchSettings() {
-        const googleSearchEnabled = localStorage.getItem('googleSearchEnabled');
-        if (googleSearchEnabled !== null) {
-            this.googleSearchEnabled = googleSearchEnabled === 'true';
+    loadOpenAiWebSearchSettings() {
+        const saved = localStorage.getItem('openAiWebSearchEnabled');
+        if (saved !== null) {
+            this.openAiWebSearchEnabled = saved === 'true';
+            localStorage.setItem('openAiWebSearchEnabled', this.openAiWebSearchEnabled.toString());
         }
     }
 
-    async handleGoogleSearchChange(e) {
-        this.googleSearchEnabled = e.target.checked;
-        localStorage.setItem('googleSearchEnabled', this.googleSearchEnabled.toString());
-
-        // Notify main process if available
-        if (window.electron?.updateGoogleSearchSetting) {
-            try {
-                await window.electron.updateGoogleSearchSetting(this.googleSearchEnabled);
-            } catch (error) {
-                logger.error('Failed to notify main process:', error);
-            }
+    handleOpenAiWebSearchChange(e) {
+        this.openAiWebSearchEnabled = e.target.checked;
+        localStorage.setItem('openAiWebSearchEnabled', this.openAiWebSearchEnabled.toString());
+        localStorage.setItem('focusWebSearchEnabled', this.openAiWebSearchEnabled.toString());
+        if (typeof this.onFocusConfigChange === 'function') {
+            this.onFocusConfigChange({
+                ...(this.focusConfig || {}),
+                webSearchEnabled: this.openAiWebSearchEnabled,
+            });
         }
 
         this.requestUpdate();
@@ -1026,6 +1071,79 @@ export class CustomizeView extends LitElement {
                     </div>
                 </div>
 
+                <div class="settings-section">
+                    <div class="section-title">
+                        <span>Focus & Retrieval</span>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label class="form-label">Role / Job / Purpose</label>
+                            <input
+                                class="form-control"
+                                placeholder="Hardware design review, auto repair walkthrough, customer support escalation, SDR discovery call"
+                                .value=${this.focusJobTitle}
+                                @input=${this.handleFocusJobTitleChange}
+                            />
+                            <div class="form-description">The situation you want the assistant optimized for.</div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Target Outcome</label>
+                            <input
+                                class="form-control"
+                                placeholder="Close the call cleanly, diagnose the fault, explain the architecture clearly"
+                                .value=${this.focusObjective}
+                                @input=${this.handleFocusObjectiveChange}
+                            />
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Priority Topics</label>
+                            <input
+                                class="form-control"
+                                placeholder="DDR timing, board bring-up, CAN bus, customer objections"
+                                .value=${this.focusPriorityTopics}
+                                @input=${this.handleFocusPriorityTopicsChange}
+                            />
+                            <div class="form-description">Keywords used to rank retrieved reference snippets.</div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Reference Pack</label>
+                            <textarea
+                                class="form-control"
+                                rows="6"
+                                placeholder="Paste a job description, resume bullets, repair manual notes, architecture guidance, SOPs, or talking points here."
+                                .value=${this.focusReferenceText}
+                                @input=${this.handleFocusReferenceTextChange}
+                            ></textarea>
+                            <div class="form-description">This becomes the local retrieval corpus for live answers and help cards.</div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                                <span>Strict Focus Mode</span>
+                                <input type="checkbox" .checked=${this.strictFocus} @change=${this.handleStrictFocusChange} />
+                            </label>
+                            <div class="form-description">When enabled, the assistant stays close to the retrieved references and visible visuals instead of improvising.</div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                                <span>Enable Web Search</span>
+                                <input type="checkbox" .checked=${this.webSearchEnabled} @change=${this.handleWebSearchEnabledChange} />
+                            </label>
+                            <div class="form-description">Allow the backend to pull in current web information when the question needs freshness or external verification.</div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Web Search Hint</label>
+                            <input
+                                class="form-control"
+                                placeholder="company name, standard, product family, competitor set"
+                                .value=${this.webSearchHint}
+                                @input=${this.handleWebSearchHintChange}
+                            />
+                            <div class="form-description">Optional query bias for web-backed answers.</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Language & Audio Section -->
                 <div class="settings-section">
                     <div class="section-title">
@@ -1160,8 +1278,8 @@ export class CustomizeView extends LitElement {
                                 <div class="form-description">
                                     ${
                                         this.selectedScreenshotInterval === 'manual'
-                                            ? 'Screenshots will only be taken when you use the "Ask Next Step" shortcut'
-                                            : 'Automatic screenshots will be taken at the specified interval'
+                                            ? 'A fresh screen frame will only be sent when you manually refresh live help'
+                                            : 'Fresh screen frames will be sent to the live session at the selected interval'
                                     }
                                 </div>
                             </div>
@@ -1261,10 +1379,10 @@ export class CustomizeView extends LitElement {
 
 
 
-                <!-- Google Search Section -->
+                <!-- OpenAI Web Search Section -->
                 <div class="settings-section">
                     <div class="section-title">
-                        <span>Google Search</span>
+                        <span>OpenAI Web Search</span>
                     </div>
 
                     <div class="form-grid">
@@ -1272,14 +1390,14 @@ export class CustomizeView extends LitElement {
                             <input
                                 type="checkbox"
                                 class="checkbox-input"
-                                id="google-search-enabled"
-                                .checked=${this.googleSearchEnabled}
-                                @change=${this.handleGoogleSearchChange}
+                                id="openai-web-search-enabled"
+                                .checked=${this.openAiWebSearchEnabled}
+                                @change=${this.handleOpenAiWebSearchChange}
                             />
-                            <label for="google-search-enabled" class="checkbox-label"> Enable Google Search </label>
+                            <label for="openai-web-search-enabled" class="checkbox-label"> Enable OpenAI web search </label>
                         </div>
                         <div class="form-description" style="margin-left: 24px; margin-top: -8px;">
-                            Allow the AI to search Google for up-to-date information and facts during conversations
+                            Allow the AI to use OpenAI web grounding for up-to-date information and facts during conversations
                             <br /><strong>Note:</strong> Changes take effect when starting a new AI session
                         </div>
                     </div>

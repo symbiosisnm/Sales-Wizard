@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
+import { PROFILE_OPTIONS } from '../../utils/profileUtils.js';
 
 export class HelpView extends LitElement {
     static styles = css`
@@ -254,7 +255,7 @@ export class HelpView extends LitElement {
     }
 
     getDefaultKeybinds() {
-        const isMac = cheddar.isMacOS || navigator.platform.includes('Mac');
+        const isMac = navigator.platform.includes('Mac');
         return {
             moveUp: isMac ? 'Alt+Up' : 'Ctrl+Up',
             moveDown: isMac ? 'Alt+Down' : 'Ctrl+Down',
@@ -350,7 +351,7 @@ export class HelpView extends LitElement {
                         <div class="keyboard-group">
                             <div class="keyboard-group-title">AI Actions</div>
                             <div class="shortcut-item">
-                                <span class="shortcut-description">Take screenshot and ask for next step</span>
+                                <span class="shortcut-description">Refresh live help from the latest turn and screen</span>
                                 <div class="shortcut-keys">${this.formatKeybind(this.keybinds.nextStep)}</div>
                             </div>
                         </div>
@@ -420,30 +421,14 @@ export class HelpView extends LitElement {
                         <span>Supported Profiles</span>
                     </div>
                     <div class="profiles-grid">
-                        <div class="profile-item">
-                            <div class="profile-name">Job Interview</div>
-                            <div class="profile-description">Get help with interview questions and responses</div>
-                        </div>
-                        <div class="profile-item">
-                            <div class="profile-name">Sales Call</div>
-                            <div class="profile-description">Assistance with sales conversations and objection handling</div>
-                        </div>
-                        <div class="profile-item">
-                            <div class="profile-name">Business Meeting</div>
-                            <div class="profile-description">Support for professional meetings and discussions</div>
-                        </div>
-                        <div class="profile-item">
-                            <div class="profile-name">Presentation</div>
-                            <div class="profile-description">Help with presentations and public speaking</div>
-                        </div>
-                        <div class="profile-item">
-                            <div class="profile-name">Negotiation</div>
-                            <div class="profile-description">Guidance for business negotiations and deals</div>
-                        </div>
-                        <div class="profile-item">
-                            <div class="profile-name">Exam Assistant</div>
-                            <div class="profile-description">Academic assistance for test-taking and exam questions</div>
-                        </div>
+                        ${PROFILE_OPTIONS.map(
+                            profile => html`
+                                <div class="profile-item">
+                                    <div class="profile-name">${profile.name}</div>
+                                    <div class="profile-description">${profile.description}</div>
+                                </div>
+                            `
+                        )}
                     </div>
                 </div>
 

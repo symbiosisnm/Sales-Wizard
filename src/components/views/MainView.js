@@ -122,6 +122,52 @@ export class MainView extends LitElement {
             line-height: 1.5;
         }
 
+        .focus-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 18px;
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+        }
+
+        .focus-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.62);
+        }
+
+        .focus-caption {
+            color: rgba(255, 255, 255, 0.68);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .focus-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .focus-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.56);
+        }
+
+        .focus-error {
+            border-color: #ff6868 !important;
+            box-shadow: 0 0 0 3px rgba(255, 104, 104, 0.14) !important;
+        }
+
         .link {
             color: var(--link-color);
             text-decoration: underline;
@@ -149,6 +195,11 @@ export class MainView extends LitElement {
         isInitializing: { type: Boolean },
         onLayoutModeChange: { type: Function },
         showApiKeyError: { type: Boolean },
+        showFocusError: { type: Boolean },
+        focusConfig: { type: Object },
+        knowledgeItems: { type: Array },
+        sessionOptions: { type: Object },
+        ffmpegAvailable: { type: Boolean },
     };
 
     constructor() {
@@ -158,6 +209,23 @@ export class MainView extends LitElement {
         this.isInitializing = false;
         this.onLayoutModeChange = () => {};
         this.showApiKeyError = false;
+        this.showFocusError = false;
+        this.focusConfig = {
+            jobTitle: '',
+            objective: '',
+            priorityTopics: '',
+            guidelineText: '',
+            selectedKnowledgeIds: [],
+            webSearchEnabled: true,
+        };
+        this.knowledgeItems = [];
+        this.sessionOptions = {
+            captureSystemAudio: false,
+            rememberImports: false,
+            videoAssistMode: 'rolling-clip',
+            clipWindowSeconds: 8,
+        };
+        this.ffmpegAvailable = false;
         this.boundKeydownHandler = this.handleKeydown.bind(this);
     }
 
@@ -195,12 +263,11 @@ export class MainView extends LitElement {
 
     async handleInput(e) {
         const value = e.target.value;
+        localStorage.setItem('apiKey', value);
         // Prefer secure store via IPC, fallback to localStorage
         try {
             if (window.electron?.secureSetApiKey) {
                 await window.electron.secureSetApiKey(value);
-            } else {
-                localStorage.setItem('apiKey', value);
             }
         } catch (_e) {
             localStorage.setItem('apiKey', value);
@@ -211,6 +278,52 @@ export class MainView extends LitElement {
         }
     }
 
+    emitFocusConfigChange(patch) {
+        this.focusConfig = {
+            ...(this.focusConfig || {}),
+            ...patch,
+        };
+        this.dispatchEvent(
+            new CustomEvent('focus-config-change', {
+                detail: { config: this.focusConfig },
+                bubbles: true,
+                composed: true,
+            })
+        );
+    }
+
+    emitSessionOptionsChange(patch) {
+        this.sessionOptions = {
+            ...(this.sessionOptions || {}),
+            ...patch,
+        };
+        this.dispatchEvent(
+            new CustomEvent('session-options-change', {
+                detail: { options: this.sessionOptions },
+                bubbles: true,
+                composed: true,
+            })
+        );
+    }
+
+    emitKnowledgeSelection(id, selected) {
+        this.dispatchEvent(
+            new CustomEvent('knowledge-selection-change', {
+                detail: { id, selected },
+                bubbles: true,
+                composed: true,
+            })
+        );
+    }
+
+    handleFocusInput(storageKey, configKey, e) {
+        localStorage.setItem(storageKey, e.target.value);
+        this.emitFocusConfigChange({ [configKey]: e.target.value });
+        if (this.showFocusError) {
+            this.showFocusError = false;
+        }
+    }
+
     async firstUpdated() {
         try {
             if (window.electron?.secureGetApiKey) {
@@ -218,6 +331,7 @@ export class MainView extends LitElement {
                 if (res?.success && res.value) {
                     const input = this.renderRoot?.querySelector('input[type="password"]');
                     if (input) input.value = res.value;
+                    localStorage.setItem('apiKey', res.value);
                 }
             }
         } catch (_e) {
@@ -305,6 +419,37 @@ export class MainView extends LitElement {
         }
     }
 
+    renderKnowledgePicker() {
+        if (!Array.isArray(this.knowledgeItems) || !this.knowledgeItems.length) {
+            return html`<div class="focus-caption">No saved knowledge items yet. You can attach them from the live Knowledge tab after import.</div>`;
+        }
+
+        const selectedIds = new Set(this.focusConfig?.selectedKnowledgeIds || []);
+        return html`
+            <div class="focus-field">
+                <div class="focus-label">Remembered Knowledge</div>
+                <div class="focus-caption">Select saved pages, visuals, or notes that should outrank stale context for this session.</div>
+                <div style="display:flex;flex-direction:column;gap:8px;max-height:180px;overflow:auto;">
+                    ${this.knowledgeItems.slice(0, 8).map(
+                        item => html`
+                            <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);">
+                                <input
+                                    type="checkbox"
+                                    .checked=${selectedIds.has(item.id)}
+                                    @change=${e => this.emitKnowledgeSelection(item.id, e.target.checked)}
+                                />
+                                <span style="display:flex;flex-direction:column;gap:4px;">
+                                    <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.92);">${item.title}</span>
+                                    <span style="font-size:12px;line-height:1.45;color:rgba(255,255,255,0.62);">${item.summary || item.kind}</span>
+                                </span>
+                            </label>
+                        `
+                    )}
+                </div>
+            </div>
+        `;
+    }
+
     render() {
         return html`
             <div class="welcome">Welcome</div>
@@ -320,6 +465,108 @@ export class MainView extends LitElement {
                 <button @click=${this.handleStartClick} class="start-button ${this.isInitializing ? 'initializing' : ''}">
                     ${this.getStartButtonText()}
                 </button>
+            </div>
+            <div class="focus-stack">
+                <div class="focus-title">What Should I Focus On?</div>
+                <div class="focus-caption">Optional. If left blank, the overlay launches as an HP sales/support assistant with live web search enabled.</div>
+                <div class="focus-field">
+                    <div class="focus-label">Role / Purpose</div>
+                    <input
+                        class=${this.showFocusError ? 'focus-error' : ''}
+                        type="text"
+                        placeholder="Hardware design review, car diagnostics, product demo, customer support call"
+                        .value=${this.focusConfig?.jobTitle || ''}
+                        @input=${e => this.handleFocusInput('focusJobTitle', 'jobTitle', e)}
+                    />
+                </div>
+                <div class="focus-field">
+                    <div class="focus-label">Target Outcome</div>
+                    <input
+                        class=${this.showFocusError ? 'focus-error' : ''}
+                        type="text"
+                        placeholder="Get a stronger answer, explain the diagram clearly, diagnose the fault faster, close the call cleanly"
+                        .value=${this.focusConfig?.objective || ''}
+                        @input=${e => this.handleFocusInput('focusObjective', 'objective', e)}
+                    />
+                </div>
+                <div class="focus-field">
+                    <div class="focus-label">Priority Topics</div>
+                    <input
+                        type="text"
+                        placeholder="DDR timing, objections handling, root-cause isolation, product comparison"
+                        .value=${this.focusConfig?.priorityTopics || ''}
+                        @input=${e => this.handleFocusInput('focusPriorityTopics', 'priorityTopics', e)}
+                    />
+                </div>
+                <div class="focus-field">
+                    <div class="focus-label">Guidelines</div>
+                    <input
+                        type="text"
+                        placeholder="Be direct, avoid jargon, ask for serial number first, keep answers short"
+                        .value=${this.focusConfig?.guidelineText || ''}
+                        @input=${e => this.handleFocusInput('focusGuidelineText', 'guidelineText', e)}
+                    />
+                </div>
+                <div class="focus-field">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <span>
+                            <div class="focus-label">Web Search</div>
+                            <div class="focus-caption">Let OpenAI pull current external facts when the task needs freshness.</div>
+                        </span>
+                        <input
+                            type="checkbox"
+                            .checked=${Boolean(this.focusConfig?.webSearchEnabled)}
+                            @change=${e => {
+                                localStorage.setItem('focusWebSearchEnabled', e.target.checked ? 'true' : 'false');
+                                this.emitFocusConfigChange({ webSearchEnabled: e.target.checked });
+                            }}
+                        />
+                    </label>
+                </div>
+                ${this.renderKnowledgePicker()}
+                <div class="focus-field">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <span>
+                            <div class="focus-label">Capture System Audio</div>
+                            <div class="focus-caption">Mix shared-tab or shared-screen audio into the live transcript when the platform allows it.</div>
+                        </span>
+                        <input
+                            type="checkbox"
+                            .checked=${Boolean(this.sessionOptions?.captureSystemAudio)}
+                            @change=${e => this.emitSessionOptionsChange({ captureSystemAudio: e.target.checked })}
+                        />
+                    </label>
+                </div>
+                <div class="focus-field">
+                    <div class="focus-label">Video Assist</div>
+                    <select
+                        style="background:var(--input-background);color:var(--text-color);border:1px solid var(--button-border);padding:10px 14px;border-radius:8px;font-size:14px;"
+                        .value=${this.sessionOptions?.videoAssistMode || 'rolling-clip'}
+                        @change=${e => this.emitSessionOptionsChange({ videoAssistMode: e.target.value })}
+                    >
+                        <option value="rolling-clip">Rolling clip assist</option>
+                        <option value="imported">Imported visuals only</option>
+                        <option value="off">Off</option>
+                    </select>
+                    <div class="focus-caption">
+                        ${this.ffmpegAvailable
+                            ? 'FFmpeg video assist is available for rolling clips and imported videos.'
+                            : 'FFmpeg video assist is not currently available in this runtime.'}
+                    </div>
+                </div>
+                <div class="focus-field">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <span>
+                            <div class="focus-label">Remember Imports</div>
+                            <div class="focus-caption">Automatically save imported visuals into the persistent knowledge library.</div>
+                        </span>
+                        <input
+                            type="checkbox"
+                            .checked=${Boolean(this.sessionOptions?.rememberImports)}
+                            @change=${e => this.emitSessionOptionsChange({ rememberImports: e.target.checked })}
+                        />
+                    </label>
+                </div>
             </div>
             <p class="description">
                 dont have an api key?

@@ -3,7 +3,7 @@ if (require('electron-squirrel-startup')) {
 }
 require("./utils/logger");
 
-const { app, BrowserWindow, shell, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, screen, dialog } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { sendToRenderer } = require('./utils/ipcUtils');
 const { exportSession } = require('./utils/sessionExports');
@@ -17,6 +17,8 @@ let contextParams = {
     toneLength: '',
     disallowedTopics: '',
 };
+
+const BACKEND_BASE_URL = process.env.LOCAL_BACKEND_URL || 'http://127.0.0.1:3001';
 
 // Initialize random process names for stealth
 const randomNames = initializeRandomProcessNames();
@@ -48,6 +50,19 @@ app.on('activate', () => {
 });
 
 function setupGeneralIpcHandlers() {
+    const backendJsonRequest = async (requestPath, { method = 'GET', body } = {}) => {
+        const response = await fetch(`${BACKEND_BASE_URL}${requestPath}`, {
+            method,
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload?.error || `Backend request failed: ${requestPath}`);
+        }
+        return payload;
+    };
+
     ipcMain.handle('quit-application', async () => {
         try {
             app.quit();
@@ -77,8 +92,12 @@ function setupGeneralIpcHandlers() {
     ipcMain.handle('update-content-protection', async () => {
         try {
             if (mainWindow) {
-                // Get content protection setting from localStorage via cheddar
-                const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
+                const contentProtection = await mainWindow.webContents.executeJavaScript(`
+                    (() => {
+                        const value = localStorage.getItem('contentProtection');
+                        return value !== null ? value === 'true' : false;
+                    })()
+                `);
                 mainWindow.setContentProtection(contentProtection);
                 logger.info('Content protection updated:', contentProtection);
             }
@@ -121,6 +140,113 @@ function setupGeneralIpcHandlers() {
 
     ipcMain.handle('get-context-params', async () => {
         return { success: true, data: contextParams };
+    });
+
+    ipcMain.handle('knowledge-list', async (_event, options = {}) => {
+        try {
+            const searchParams = new URLSearchParams();
+            if (options.scope) {
+                searchParams.set('scope', options.scope);
+            }
+            if (options.sessionId) {
+                searchParams.set('sessionId', options.sessionId);
+            }
+            const query = searchParams.toString();
+            const payload = await backendJsonRequest(`/knowledge${query ? `?${query}` : ''}`);
+            return { success: true, ...payload };
+        } catch (error) {
+            logger.error('Error listing knowledge:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('knowledge-import-guideline', async (_event, options = {}) => {
+        try {
+            const payload = await backendJsonRequest('/knowledge/guideline', {
+                method: 'POST',
+                body: options,
+            });
+            return { success: true, ...payload };
+        } catch (error) {
+            logger.error('Error importing guideline knowledge:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('knowledge-import-url', async (_event, options = {}) => {
+        try {
+            const payload = await backendJsonRequest('/knowledge/url', {
+                method: 'POST',
+                body: options,
+            });
+            return { success: true, ...payload };
+        } catch (error) {
+            logger.error('Error importing URL knowledge:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('knowledge-import-file', async (_event, options = {}) => {
+        try {
+            let filePath = typeof options.path === 'string' ? options.path.trim() : '';
+            if (!filePath) {
+                const dialogResult = await dialog.showOpenDialog(mainWindow || undefined, {
+                    properties: ['openFile'],
+                    filters: [
+                        {
+                            name: 'Knowledge Assets',
+                            extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', 'txt', 'md'],
+                        },
+                    ],
+                });
+                if (dialogResult.canceled || !dialogResult.filePaths?.length) {
+                    return { success: false, canceled: true };
+                }
+                filePath = dialogResult.filePaths[0];
+            }
+            const payload = await backendJsonRequest('/knowledge/file', {
+                method: 'POST',
+                body: {
+                    ...options,
+                    path: filePath,
+                },
+            });
+            return { success: true, ...payload };
+        } catch (error) {
+            logger.error('Error importing file knowledge:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('knowledge-update', async (_event, options = {}) => {
+        try {
+            if (!options.id) {
+                throw new Error('Knowledge item id is required');
+            }
+            const payload = await backendJsonRequest(`/knowledge/${encodeURIComponent(options.id)}`, {
+                method: 'PATCH',
+                body: options,
+            });
+            return { success: true, ...payload };
+        } catch (error) {
+            logger.error('Error updating knowledge:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('knowledge-delete', async (_event, options = {}) => {
+        try {
+            if (!options.id) {
+                throw new Error('Knowledge item id is required');
+            }
+            const payload = await backendJsonRequest(`/knowledge/${encodeURIComponent(options.id)}`, {
+                method: 'DELETE',
+            });
+            return { success: true, ...payload };
+        } catch (error) {
+            logger.error('Error deleting knowledge:', error);
+            return { success: false, error: error.message };
+        }
     });
 
     // Provide cursor position and display bounds for region screenshots

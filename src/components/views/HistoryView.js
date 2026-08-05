@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
+import { PROFILE_NAME_MAP } from '../../utils/profileUtils.js';
 
 const API_BASE = 'http://localhost:3001';
 
@@ -498,14 +499,7 @@ export class HistoryView extends LitElement {
     }
 
     getProfileNames() {
-        return {
-            interview: 'Job Interview',
-            sales: 'Sales Call',
-            meeting: 'Business Meeting',
-            presentation: 'Presentation',
-            negotiation: 'Negotiation',
-            exam: 'Exam Assistant',
-        };
+        return PROFILE_NAME_MAP;
     }
 
     renderSessionsList() {

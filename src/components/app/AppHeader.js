@@ -226,6 +226,7 @@ export class AppHeader extends LitElement {
 
     render() {
         const elapsedTime = this.getElapsedTime();
+        const isMac = navigator.platform.includes('Mac');
 
         return html`
             <div class="header">
@@ -389,7 +390,7 @@ export class AppHeader extends LitElement {
                         ? html`
                               <audio-level-indicator .level=${this.audioLevel}></audio-level-indicator>
                               <button @click=${this.onHideToggleClick} class="button">
-                                  Hide&nbsp;&nbsp;<span class="key" style="pointer-events: none;">${cheddar.isMacOS ? 'Cmd' : 'Ctrl'}</span
+                                  Hide&nbsp;&nbsp;<span class="key" style="pointer-events: none;">${isMac ? 'Cmd' : 'Ctrl'}</span
                                   >&nbsp;&nbsp;<span class="key">&bsol;</span>
                               </button>
                               <button @click=${this.onCloseClick} class="icon-button window-close">

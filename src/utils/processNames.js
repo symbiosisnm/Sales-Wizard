@@ -15,7 +15,6 @@ const prefixes = [
     'Windows',
     'Microsoft',
     'Apple',
-    'Google',
     'Chrome',
     'Firefox',
     'Adobe',
@@ -90,7 +89,6 @@ const extensions = [
 const companies = [
     'Microsoft',
     'Apple',
-    'Google',
     'Adobe',
     'Intel',
     'NVIDIA',

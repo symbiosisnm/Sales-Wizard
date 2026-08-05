@@ -5,16 +5,16 @@
 > [!NOTE]  
 > Use latest MacOS and Windows version, older versions have limited support
 
-> [!NOTE]  
-> During testing it wont answer if you ask something, you need to simulate interviewer asking question, which it will answer
-
-A real-time AI assistant that provides contextual help during video calls, interviews, presentations, and meetings using screen capture and audio analysis.
+A real-time OpenAI assistant that provides contextual help during calls, support work, sales conversations, demos, troubleshooting, interviews, presentations, and meetings using screen capture, audio analysis, web search, and saved knowledge.
 
 ## Features
 
 - **Live AI Assistance**: Real-time help powered by OpenAI Realtime
 - **Screen & Audio Capture**: Analyzes what you see and hear for contextual responses
-- **Multiple Profiles**: Interview, Sales Call, Business Meeting, Presentation, Negotiation
+- **OpenAI Web Search**: Grounds freshness-sensitive answers with current web results and sources
+- **Knowledge Library**: Save guidelines, pages, images, and videos for task-specific retrieval
+- **Video Assist**: Uses bundled FFmpeg tooling to sample imported videos and short rolling screen clips
+- **Multiple Profiles**: General, Sales Call, Support, Business Meeting, Presentation, Negotiation, Interview
 - **Transparent Overlay**: Always-on-top window that can be positioned anywhere
 - **Click-through Mode**: Make window transparent to clicks when needed
 - **Cross-platform**: Works on macOS, Windows, and Linux (kinda, dont use, just for testing rn)
@@ -29,10 +29,10 @@ A real-time AI assistant that provides contextual help during video calls, inter
 ## Usage
 
 1. Enter your OpenAI API key in the main window
-2. Choose your profile and language in settings
+2. Set the task purpose, target outcome, guidelines, knowledge, and web-search preference
 3. Click "Start Session" to begin
 4. Position the window using keyboard shortcuts
-5. The AI will provide real-time assistance based on your screen and what interview asks
+5. The AI will provide real-time assistance based on your screen, audio, knowledge, and current web context
 
 ## Keyboard Shortcuts
 
@@ -43,9 +43,9 @@ A real-time AI assistant that provides contextual help during video calls, inter
 
 ## Audio Capture
 
-- **macOS**: [SystemAudioDump](https://github.com/Mohammed-Yasin-Mulla/Sound) for system audio
-- **Windows**: Loopback audio capture
-- **Linux**: Microphone input
+- Microphone input is supported through browser media capture.
+- Optional system audio is requested during screen share when the platform/share target supports it.
+- If system audio is unavailable, the session continues with microphone audio and live screen frames.
 
 ## Requirements
 
@@ -56,21 +56,19 @@ A real-time AI assistant that provides contextual help during video calls, inter
 
 ## Real-Time Streaming
 
-Cheating Daddy can stream microphone audio and periodic screen captures to a
-backend for live model interaction. The following sections outline the
+Sales Wizard can stream microphone audio and periodic screen captures to a
+backend for OpenAI Realtime model interaction. The following sections outline the
 requirements and configuration for this feature.
 
 ### Audio Requirements
 
 - A working microphone is required for live audio capture.
-- Optional system audio streaming on macOS relies on the
-  [`SystemAudioDump`](https://github.com/Mohammed-Yasin-Mulla/Sound) binary. If
-  the tool is missing, install it and ensure it is in your `PATH`.
+- Optional system audio capture depends on the current OS and the selected screen/share target.
 
 ### Screen Capture
 
 - Grant screen-recording permissions to the application when prompted.
-- Screen frames are streamed in real-time using WebP compression. Capture
+- Screen frames are streamed in real-time using JPEG compression. Capture
   quality and region (full screen, around cursor, or active window) can be
   adjusted in the application settings.
 

@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { getFocusLabel, getProfileName, normalizeProfile } from '../../utils/profileUtils.js';
 
 export class AssistantView extends LitElement {
     static styles = css`
@@ -16,11 +17,19 @@ export class AssistantView extends LitElement {
         .response-container {
             height: calc(100% - 60px);
             overflow-y: auto;
-            border-radius: 10px;
+            border-radius: 22px;
             font-size: var(--response-font-size, 18px);
             line-height: 1.6;
-            background: var(--main-content-background);
-            padding: 16px;
+            background:
+                radial-gradient(circle at top right, rgba(125, 211, 252, 0.12), transparent 20%),
+                linear-gradient(180deg, rgba(8, 14, 24, 0.36), rgba(8, 14, 24, 0.2));
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 18px 50px rgba(15, 23, 42, 0.18);
+            backdrop-filter: blur(28px) saturate(160%);
+            -webkit-backdrop-filter: blur(28px) saturate(160%);
+            padding: 20px 22px;
             scroll-behavior: smooth;
             user-select: text;
             cursor: text;
@@ -102,12 +111,12 @@ export class AssistantView extends LitElement {
             margin: 1em 0;
             padding: 0.5em 1em;
             border-left: 4px solid var(--focus-border-color);
-            background: rgba(0, 122, 255, 0.1);
+            background: rgba(125, 211, 252, 0.1);
             font-style: italic;
         }
 
         .response-container code {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.08);
             padding: 0.2em 0.4em;
             border-radius: 3px;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -196,15 +205,21 @@ export class AssistantView extends LitElement {
             gap: 10px;
             margin-top: 10px;
             align-items: center;
+            padding: 8px 10px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(24px) saturate(150%);
+            -webkit-backdrop-filter: blur(24px) saturate(150%);
         }
 
         .text-input-container input {
             flex: 1;
-            background: var(--input-background);
+            background: rgba(255, 255, 255, 0.05);
             color: var(--text-color);
-            border: 1px solid var(--button-border);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             padding: 10px 14px;
-            border-radius: 8px;
+            border-radius: 14px;
             font-size: 14px;
         }
 
@@ -232,9 +247,9 @@ export class AssistantView extends LitElement {
         }
 
         .nav-button {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.04);
             color: white;
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.08);
             padding: 4px;
             border-radius: 50%;
             font-size: 12px;
@@ -266,9 +281,9 @@ export class AssistantView extends LitElement {
         }
 
         .save-button {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.04);
             color: var(--start-button-background);
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.08);
             padding: 4px;
             border-radius: 50%;
             font-size: 12px;
@@ -297,6 +312,7 @@ export class AssistantView extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         selectedProfile: { type: String },
+        focusConfig: { type: Object },
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         savedResponses: { type: Array },
@@ -306,7 +322,8 @@ export class AssistantView extends LitElement {
         super();
         this.responses = [];
         this.currentResponseIndex = -1;
-        this.selectedProfile = 'interview';
+        this.selectedProfile = 'general';
+        this.focusConfig = {};
         this.onSendText = () => {};
         this._lastAnimatedWordCount = 0;
         // Load saved responses from localStorage
@@ -317,22 +334,12 @@ export class AssistantView extends LitElement {
         }
     }
 
-    getProfileNames() {
-        return {
-            interview: 'Job Interview',
-            sales: 'Sales Call',
-            meeting: 'Business Meeting',
-            presentation: 'Presentation',
-            negotiation: 'Negotiation',
-            exam: 'Exam Assistant',
-        };
-    }
-
     getCurrentResponse() {
-        const profileNames = this.getProfileNames();
+        const profile = normalizeProfile(this.selectedProfile || 'general');
+        const focusLabel = getFocusLabel(this.focusConfig, profile);
         return this.responses.length > 0 && this.currentResponseIndex >= 0
             ? this.responses[this.currentResponseIndex]
-            : `Hey, Im listening to your ${profileNames[this.selectedProfile] || 'session'}?`;
+            : `Ready for ${focusLabel || getProfileName(profile)}. Speak or type a question when you want a live answer.`;
     }
 
     renderMarkdown(content) {

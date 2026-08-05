@@ -54,11 +54,22 @@ function createWindow(sendToRenderer, randomNames = null) {
     const { session, desktopCapturer } = require('electron');
     session.defaultSession.setDisplayMediaRequestHandler(
         (request, callback) => {
-            desktopCapturer.getSources({ types: ['screen'] }).then(sources => {
-                callback({ video: sources[0], audio: 'loopback' });
-            });
+            desktopCapturer
+                .getSources({ types: ['screen'] })
+                .then(sources => {
+                    if (!Array.isArray(sources) || !sources.length) {
+                        logger.warn('No screen sources available for display media request');
+                        callback({});
+                        return;
+                    }
+                    callback({ video: sources[0], audio: 'loopback' });
+                })
+                .catch(error => {
+                    logger.warn('Failed to get display media sources:', error);
+                    callback({});
+                });
         },
-        { useSystemPicker: true }
+        { useSystemPicker: false }
     );
 
     mainWindow.setResizable(false);
@@ -117,7 +128,12 @@ function createWindow(sendToRenderer, randomNames = null) {
 
                     // Apply content protection setting via IPC handler
                     try {
-                        const contentProtection = await mainWindow.webContents.executeJavaScript('cheddar.getContentProtection()');
+                        const contentProtection = await mainWindow.webContents.executeJavaScript(`
+                            (() => {
+                                const value = localStorage.getItem('contentProtection');
+                                return value !== null ? value === 'true' : false;
+                            })()
+                        `);
                         mainWindow.setContentProtection(contentProtection);
                         logger.info('Content protection loaded from settings:', contentProtection);
                     } catch (error) {
@@ -248,7 +264,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
             globalShortcut.register(keybinds.panicHide, () => {
                 try {
                     if (mainWindow.isVisible()) mainWindow.hide();
-                    mainWindow.webContents.executeJavaScript('cheddar && cheddar.stopCapture && cheddar.stopCapture()').catch(() => {});
+                    mainWindow.webContents
+                        .executeJavaScript('document.querySelector("cheating-daddy-app")?.stopCapture?.()')
+                        .catch(() => {});
                 } catch (err) {
                     logger.error('Error during panicHide:', err);
                 }
@@ -263,7 +281,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.toggleMic) {
         try {
             globalShortcut.register(keybinds.toggleMic, () => {
-                mainWindow.webContents.executeJavaScript('window.dispatchEvent(new CustomEvent("cheddar-toggle-mic"))');
+                mainWindow.webContents
+                    .executeJavaScript('document.querySelector("cheating-daddy-app")?.handleToggleMicrophone?.()')
+                    .catch(() => {});
             });
             logger.info(`Registered toggleMic: ${keybinds.toggleMic}`);
         } catch (error) {
@@ -273,8 +293,13 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 
     // Register next step shortcut (either starts session or takes screenshot based on view)
     if (keybinds.nextStep) {
+        const nextStepGraceEndsAt = Date.now() + 3000;
         try {
             globalShortcut.register(keybinds.nextStep, async () => {
+                if (Date.now() < nextStepGraceEndsAt) {
+                    logger.info('Ignoring nextStep shortcut during startup grace period');
+                    return;
+                }
                 logger.info('Next step shortcut triggered');
                 try {
                     // Determine the shortcut key format
@@ -283,7 +308,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 
                     // Use the new handleShortcut function
                     mainWindow.webContents.executeJavaScript(`
-                        cheddar.handleShortcut('${shortcutKey}');
+                        document.querySelector('cheating-daddy-app')?.handleShortcut?.('${shortcutKey}');
                     `);
                 } catch (error) {
                     logger.error('Error handling next step shortcut:', error);
@@ -477,8 +502,12 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
             // Get current view and layout mode from renderer
             let viewName, layoutMode;
             try {
-                viewName = await event.sender.executeJavaScript('cheddar.getCurrentView()');
-                layoutMode = await event.sender.executeJavaScript('cheddar.getLayoutMode()');
+                viewName = await event.sender.executeJavaScript(
+                    'document.querySelector("cheating-daddy-app")?.getCurrentView?.() || "main"'
+                );
+                layoutMode = await event.sender.executeJavaScript(
+                    'document.querySelector("cheating-daddy-app")?.getLayoutMode?.() || "normal"'
+                );
             } catch (error) {
                 logger.warn('Failed to get view/layout from renderer, using defaults:', error);
                 viewName = 'main';
@@ -513,7 +542,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                     targetHeight = layoutMode === 'compact' ? 400 : 500;
                     break;
                 case 'main':
+                    targetWidth = baseWidth;
+                    targetHeight = baseHeight;
+                    break;
                 case 'assistant':
+                    targetWidth = layoutMode === 'compact' ? 980 : 1240;
+                    targetHeight = layoutMode === 'compact' ? 460 : 660;
+                    break;
                 case 'onboarding':
                 default:
                     targetWidth = baseWidth;
