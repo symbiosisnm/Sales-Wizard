@@ -32,9 +32,9 @@ app.whenReady().then(async () => {
     // Apply anti-analysis measures with random delay
     await applyAntiAnalysisMeasures();
 
-    createMainWindow();
     setupGeneralIpcHandlers();
     registerSecureStoreIpc();
+    createMainWindow();
 });
 
 app.on('window-all-closed', () => {

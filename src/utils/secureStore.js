@@ -15,12 +15,23 @@ function getKeytar() {
 
 const SERVICE = 'cheating-daddy';
 const ACCOUNT = 'openai_api_key';
+const KEYCHAIN_TIMEOUT_MS = 1500;
+
+function withTimeout(promise) {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Keychain request timed out')), KEYCHAIN_TIMEOUT_MS);
+    });
+    return Promise.race([promise, timeout]).finally(() => {
+        clearTimeout(timeoutId);
+    });
+}
 
 async function secureGetApiKey() {
     const kt = getKeytar();
     if (!kt) return null;
     try {
-        const v = await kt.getPassword(SERVICE, ACCOUNT);
+        const v = await withTimeout(kt.getPassword(SERVICE, ACCOUNT));
         return v || null;
     } catch (_e) {
         return null;
@@ -32,10 +43,10 @@ async function secureSetApiKey(value) {
     if (!kt) return false;
     try {
         if (!value) {
-            await kt.deletePassword(SERVICE, ACCOUNT);
+            await withTimeout(kt.deletePassword(SERVICE, ACCOUNT));
             return true;
         }
-        await kt.setPassword(SERVICE, ACCOUNT, value);
+        await withTimeout(kt.setPassword(SERVICE, ACCOUNT, value));
         return true;
     } catch (_e) {
         return false;

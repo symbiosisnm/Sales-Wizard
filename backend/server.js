@@ -266,6 +266,13 @@ app.get('/context-params', (_req, res) => {
   res.json(state.contextParams);
 });
 
+app.get('/api-key-status', (_req, res) => {
+  res.json({
+    success: true,
+    hasEnvKey: Boolean(process.env.OPENAI_API_KEY),
+  });
+});
+
 app.put('/context-params', (req, res) => {
   state.contextParams = { ...state.contextParams, ...req.body };
   res.json({ success: true, data: state.contextParams });

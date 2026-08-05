@@ -271,6 +271,7 @@ export class CheatingDaddyApp extends LitElement {
         this.audioLevel = 0;
         this._focusSyncTimer = null;
         this._autoStartAttempted = false;
+        this._autoStartRetryCount = 0;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -425,18 +426,27 @@ export class CheatingDaddyApp extends LitElement {
         if (this._autoStartAttempted || this.sessionActive || this._stopLiveStreaming) {
             return;
         }
-        this._autoStartAttempted = true;
 
         const apiKey = await this.resolveApiKey();
+        const hasBackendApiKey = apiKey ? true : await this.backendHasApiKey();
         const launchFocusConfig = this.getLaunchReadyFocusConfig(this.getStoredFocusConfig());
         this.focusConfig = launchFocusConfig;
         this.persistFocusConfig(launchFocusConfig);
 
-        if (!apiKey) {
+        if (!hasBackendApiKey) {
+            this._autoStartRetryCount += 1;
+            if (this._autoStartRetryCount < 12) {
+                this.setStatus('Looking for saved OpenAI API key...');
+                window.setTimeout(() => {
+                    void this.autoStartIfReady();
+                }, 500);
+                return;
+            }
             this.setStatus('Enter an OpenAI API key to start live mode');
             return;
         }
 
+        this._autoStartAttempted = true;
         localStorage.setItem('onboardingCompleted', 'true');
         if (this.currentView !== 'main') {
             this.currentView = 'main';
@@ -588,20 +598,48 @@ export class CheatingDaddyApp extends LitElement {
         }
     }
 
+    async getSecureApiKeyWithTimeout(timeoutMs = 1800) {
+        if (!window.electron?.secureGetApiKey) {
+            return '';
+        }
+
+        let timeoutId;
+        const timeout = new Promise(resolve => {
+            timeoutId = window.setTimeout(() => resolve({ success: false, timeout: true }), timeoutMs);
+        });
+        const request = window.electron.secureGetApiKey().catch(() => ({ success: false }));
+        const res = await Promise.race([request, timeout]);
+        window.clearTimeout(timeoutId);
+
+        return res?.success && res.value ? res.value.trim() : '';
+    }
+
     async resolveApiKey() {
-        let apiKey = localStorage.getItem('apiKey')?.trim();
-        if (!apiKey && window.electron?.secureGetApiKey) {
+        const localApiKey = localStorage.getItem('apiKey')?.trim() || '';
+
+        if (window.electron?.secureGetApiKey) {
             try {
-                const res = await window.electron.secureGetApiKey();
-                if (res?.success && res.value) {
-                    apiKey = res.value.trim();
-                    localStorage.setItem('apiKey', apiKey);
+                const secureApiKey = await this.getSecureApiKeyWithTimeout(localApiKey ? 350 : 1800);
+                if (secureApiKey) {
+                    localStorage.setItem('apiKey', secureApiKey);
+                    return secureApiKey;
                 }
             } catch (_error) {
                 /* empty */
             }
         }
-        return apiKey || '';
+
+        return localApiKey;
+    }
+
+    async backendHasApiKey() {
+        try {
+            const response = await fetch('http://localhost:3001/api-key-status');
+            const payload = await response.json().catch(() => ({}));
+            return Boolean(response.ok && payload?.hasEnvKey);
+        } catch (_error) {
+            return false;
+        }
     }
 
     async rememberVisualImport(context) {
@@ -775,8 +813,9 @@ export class CheatingDaddyApp extends LitElement {
         this.persistFocusConfig(liveFocusConfig);
         const activeProfile = this.resolveActiveProfile(liveFocusConfig);
         const apiKey = await this.resolveApiKey();
+        const hasBackendApiKey = apiKey ? true : await this.backendHasApiKey();
 
-        if (!apiKey || apiKey === '') {
+        if (!hasBackendApiKey) {
             // Trigger the red blink animation on the API key input
             const mainView = this.shadowRoot.querySelector('main-view');
             if (mainView && mainView.triggerApiKeyError) {

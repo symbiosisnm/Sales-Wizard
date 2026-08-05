@@ -226,6 +226,7 @@ export class MainView extends LitElement {
             clipWindowSeconds: 8,
         };
         this.ffmpegAvailable = false;
+        this._apiKeyStartTimer = null;
         this.boundKeydownHandler = this.handleKeydown.bind(this);
     }
 
@@ -247,6 +248,10 @@ export class MainView extends LitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         window.electron?.removeSessionInitializingListeners?.();
+        if (this._apiKeyStartTimer) {
+            clearTimeout(this._apiKeyStartTimer);
+            this._apiKeyStartTimer = null;
+        }
         // Remove keyboard event listener
         document.removeEventListener('keydown', this.boundKeydownHandler);
     }
@@ -275,6 +280,17 @@ export class MainView extends LitElement {
         // Clear error state when user starts typing
         if (this.showApiKeyError) {
             this.showApiKeyError = false;
+        }
+
+        const trimmed = value.trim();
+        if (trimmed.startsWith('sk-') && trimmed.length > 20) {
+            if (this._apiKeyStartTimer) {
+                clearTimeout(this._apiKeyStartTimer);
+            }
+            this._apiKeyStartTimer = setTimeout(() => {
+                this._apiKeyStartTimer = null;
+                this.handleStartClick();
+            }, 350);
         }
     }
 
@@ -324,15 +340,29 @@ export class MainView extends LitElement {
         }
     }
 
+    async getSecureApiKeyWithTimeout(timeoutMs = 1800) {
+        if (!window.electron?.secureGetApiKey) {
+            return '';
+        }
+
+        let timeoutId;
+        const timeout = new Promise(resolve => {
+            timeoutId = window.setTimeout(() => resolve({ success: false, timeout: true }), timeoutMs);
+        });
+        const request = window.electron.secureGetApiKey().catch(() => ({ success: false }));
+        const res = await Promise.race([request, timeout]);
+        window.clearTimeout(timeoutId);
+
+        return res?.success && res.value ? res.value.trim() : '';
+    }
+
     async firstUpdated() {
         try {
-            if (window.electron?.secureGetApiKey) {
-                const res = await window.electron.secureGetApiKey();
-                if (res?.success && res.value) {
-                    const input = this.renderRoot?.querySelector('input[type="password"]');
-                    if (input) input.value = res.value;
-                    localStorage.setItem('apiKey', res.value);
-                }
+            const secureApiKey = await this.getSecureApiKeyWithTimeout();
+            if (secureApiKey) {
+                const input = this.renderRoot?.querySelector('input[type="password"]');
+                if (input) input.value = secureApiKey;
+                localStorage.setItem('apiKey', secureApiKey);
             }
         } catch (_e) {
             /* empty */
