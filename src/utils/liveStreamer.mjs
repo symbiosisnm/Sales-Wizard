@@ -14,12 +14,49 @@ const HAVE_CURRENT_DATA =
 function resolveJpegQuality(imageQuality = 'medium') {
   switch (String(imageQuality || '').toLowerCase()) {
     case 'low':
-      return 0.65;
+      return 0.55;
     case 'high':
-      return 0.92;
-    default:
       return 0.85;
+    default:
+      return 0.72;
   }
+}
+
+function resolveMaxFrameEdge(imageQuality = 'medium') {
+  switch (String(imageQuality || '').toLowerCase()) {
+    case 'high':
+      return 1280;
+    case 'low':
+      return 720;
+    default:
+      return 960;
+  }
+}
+
+function fitWithinMaxEdge(width, height, maxEdge) {
+  const safeWidth = Math.max(1, Number(width) || 1);
+  const safeHeight = Math.max(1, Number(height) || 1);
+  const edge = Math.max(safeWidth, safeHeight);
+  if (!maxEdge || edge <= maxEdge) {
+    return { width: safeWidth, height: safeHeight };
+  }
+  const scale = maxEdge / edge;
+  return {
+    width: Math.max(1, Math.round(safeWidth * scale)),
+    height: Math.max(1, Math.round(safeHeight * scale)),
+  };
+}
+
+function sampleEvenly(items, maxItems) {
+  if (!Array.isArray(items) || items.length <= maxItems) {
+    return Array.isArray(items) ? items : [];
+  }
+  const result = [];
+  const lastIndex = items.length - 1;
+  for (let index = 0; index < maxItems; index += 1) {
+    result.push(items[Math.round((index * lastIndex) / (maxItems - 1))]);
+  }
+  return result;
 }
 
 function getMediaDevices() {
@@ -84,8 +121,13 @@ function ensureCanvas(width, height) {
 }
 
 async function bitmapToBlob(bitmap, reusableCanvas, imageQuality) {
-  const width = bitmap.width || reusableCanvas?.width || 1;
-  const height = bitmap.height || reusableCanvas?.height || 1;
+  const sourceWidth = bitmap.width || reusableCanvas?.width || 1;
+  const sourceHeight = bitmap.height || reusableCanvas?.height || 1;
+  const { width, height } = fitWithinMaxEdge(
+    sourceWidth,
+    sourceHeight,
+    resolveMaxFrameEdge(imageQuality)
+  );
   const canvas = reusableCanvas || ensureCanvas(width, height);
   if (!canvas) {
     throw new Error('No canvas available to convert ImageBitmap');
@@ -137,7 +179,12 @@ async function createCanvasFrameSource(stream, track, imageQuality) {
   }
 
   const initialSettings = (track?.getSettings && track.getSettings()) || {};
-  let canvas = ensureCanvas(initialSettings.width || 1280, initialSettings.height || 720);
+  const initialSize = fitWithinMaxEdge(
+    initialSettings.width || 1280,
+    initialSettings.height || 720,
+    resolveMaxFrameEdge(imageQuality)
+  );
+  let canvas = ensureCanvas(initialSize.width, initialSize.height);
   if (!canvas) {
     return null;
   }
@@ -145,8 +192,11 @@ async function createCanvasFrameSource(stream, track, imageQuality) {
 
   const grabFrame = async () => {
     await waitForReady();
-    const width = video.videoWidth || canvas.width;
-    const height = video.videoHeight || canvas.height;
+    const { width, height } = fitWithinMaxEdge(
+      video.videoWidth || canvas.width,
+      video.videoHeight || canvas.height,
+      resolveMaxFrameEdge(imageQuality)
+    );
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
@@ -322,7 +372,10 @@ export async function startLiveStreaming({
     if (normalizedSessionOptions.videoAssistMode !== 'rolling-clip') {
       return;
     }
-    const clipFrames = recentScreenFrames.map(frame => frame.dataUrl).filter(Boolean);
+    const clipFrames = sampleEvenly(
+      recentScreenFrames.map(frame => frame.dataUrl).filter(Boolean),
+      4
+    );
     if (clipFrames.length < 2) {
       return;
     }

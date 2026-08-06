@@ -1061,7 +1061,7 @@ wss.on('connection', ws => {
       return lastWebIntel;
     }
 
-    sendStatus('Searching web...');
+    sendStatus(responsePendingOrActive ? 'Updating web help...' : 'Searching web...');
     const retrieval = await buildRetrievalBase(turnText);
     const requestBody = buildWebIntelRequest({
       focusConfig: normalizedFocus,
@@ -1091,6 +1091,43 @@ wss.on('connection', ws => {
       turnHash: buildHelpPackHash(turnText),
     };
     return lastWebIntel;
+  };
+
+  const runDeepTurnAnalysis = async (
+    turnText,
+    { forceHelp = false, revision, allowGroundedAnswer = false } = {}
+  ) => {
+    let webIntel = null;
+
+    try {
+      await syncFocusContextItem(turnText);
+    } catch (err) {
+      sendError(err, 'focus-context');
+    }
+
+    try {
+      webIntel = await maybeGenerateWebIntel(turnText, { force: forceHelp });
+    } catch (err) {
+      sendError(err, 'web-search');
+    }
+
+    if (revision !== analysisRevision) {
+      return;
+    }
+
+    if (webIntel?.summary) {
+      try {
+        await syncFocusContextItem(turnText);
+      } catch (err) {
+        sendError(err, 'focus-context-web');
+      }
+    }
+
+    if (allowGroundedAnswer && Boolean(webIntel?.summary) && !responsePendingOrActive) {
+      emitGroundedWebAnswer(webIntel);
+    }
+
+    queueHelpPack({ force: forceHelp, turnText });
   };
 
   const generateVisualSummary = async (visualContext, turnText = lastTurnText) => {
@@ -1480,23 +1517,16 @@ wss.on('connection', ws => {
 
     lastTurnText = trimmed;
     const revision = ++analysisRevision;
-    let webIntel = null;
-    try {
-      webIntel = await maybeGenerateWebIntel(trimmed, { force: forceHelp });
-    } catch (err) {
-      sendError(err, 'web-search');
-    }
-    if (revision !== analysisRevision) {
-      return;
-    }
-    await syncFocusContextItem(trimmed);
+
     if (regenerateResponse) {
-      const usedGroundedWebAnswer = Boolean(webIntel?.summary) && emitGroundedWebAnswer(webIntel);
-      if (!usedGroundedWebAnswer) {
-        requestModelResponse();
-      }
+      requestModelResponse();
     }
-    queueHelpPack({ force: forceHelp, turnText: trimmed });
+
+    void runDeepTurnAnalysis(trimmed, {
+      allowGroundedAnswer: false,
+      forceHelp,
+      revision,
+    });
   };
 
   const handleText = async text => {
