@@ -438,7 +438,7 @@ export class CustomizeView extends LitElement {
         this.selectedLanguage = 'en-US';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
-        this.layoutMode = 'normal';
+        this.layoutMode = 'side-dock';
         this.keybinds = this.getDefaultKeybinds();
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
@@ -1183,15 +1183,20 @@ export class CustomizeView extends LitElement {
                             <div class="form-group">
                                 <label class="form-label">
                                     Layout Mode
-                                    <span class="current-selection">${this.layoutMode === 'compact' ? 'Compact' : 'Normal'}</span>
+                                    <span class="current-selection"
+                                        >${this.layoutMode === 'side-dock' ? 'Side Dock' : this.layoutMode === 'compact' ? 'Compact' : 'Normal'}</span
+                                    >
                                 </label>
                                 <select class="form-control" .value=${this.layoutMode} @change=${this.handleLayoutModeSelect}>
+                                    <option value="side-dock" ?selected=${this.layoutMode === 'side-dock'}>Side Dock</option>
                                     <option value="normal" ?selected=${this.layoutMode === 'normal'}>Normal</option>
                                     <option value="compact" ?selected=${this.layoutMode === 'compact'}>Compact</option>
                                 </select>
                                 <div class="form-description">
                                     ${
-                                        this.layoutMode === 'compact'
+                                        this.layoutMode === 'side-dock'
+                                            ? 'Narrow right-side overlay that keeps your CRM, browser, and product pages usable while live help stays visible'
+                                            : this.layoutMode === 'compact'
                                             ? 'Smaller window size with reduced padding and font sizes for minimal screen footprint'
                                             : 'Standard layout with comfortable spacing and font sizes'
                                     }

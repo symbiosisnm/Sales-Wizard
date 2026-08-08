@@ -88,6 +88,55 @@ export class AppHeader extends LitElement {
             font-size: 12px;
             margin: 0px;
         }
+
+        :host-context(.side-dock-layout) .header {
+            padding: 7px 9px;
+            border-radius: 17px;
+            background: rgba(5, 12, 22, 0.3);
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(18px) saturate(145%);
+            -webkit-backdrop-filter: blur(18px) saturate(145%);
+        }
+
+        :host-context(.side-dock-layout) .header-title {
+            max-width: 128px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12px;
+            letter-spacing: 0.01em;
+        }
+
+        :host-context(.side-dock-layout) .header-actions {
+            min-width: 0;
+            gap: 5px;
+        }
+
+        :host-context(.side-dock-layout) .header-actions span {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 10px;
+        }
+
+        :host-context(.side-dock-layout) .button {
+            max-width: 46px;
+            overflow: hidden;
+            white-space: nowrap;
+            padding: 5px 8px;
+            border-radius: 999px;
+        }
+
+        :host-context(.side-dock-layout) .icon-button {
+            padding: 5px;
+            border-radius: 999px;
+        }
+
+        :host-context(.side-dock-layout) .key {
+            display: none;
+        }
     `;
 
     static properties = {

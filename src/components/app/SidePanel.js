@@ -588,6 +588,250 @@ export class SidePanel extends LitElement {
         .hidden-input {
             display: none;
         }
+
+        :host-context(.side-dock-layout) {
+            width: 100%;
+            min-width: 0;
+            background: transparent;
+            border-left: 0;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
+        :host-context(.side-dock-layout) .panel-shell {
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            background:
+                radial-gradient(circle at top right, rgba(56, 189, 248, 0.1), transparent 34%),
+                rgba(5, 12, 22, 0.3);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+        }
+
+        :host-context(.side-dock-layout) .topbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 7px;
+            padding: 9px 10px 0;
+        }
+
+        :host-context(.side-dock-layout) .source-chip {
+            width: fit-content;
+            padding: 5px 9px;
+            font-size: 9px;
+            letter-spacing: 0.1em;
+        }
+
+        :host-context(.side-dock-layout) .visual-actions {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 6px;
+        }
+
+        :host-context(.side-dock-layout) .ghost-button,
+        :host-context(.side-dock-layout) .clear-button,
+        :host-context(.side-dock-layout) .save-button {
+            padding: 7px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+        }
+
+        :host-context(.side-dock-layout) .tabs {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 8px 10px 0;
+            scrollbar-width: none;
+        }
+
+        :host-context(.side-dock-layout) .tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        :host-context(.side-dock-layout) .tab-button {
+            flex: 0 0 auto;
+            padding: 7px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            letter-spacing: 0.01em;
+        }
+
+        :host-context(.side-dock-layout) .panel-body {
+            padding: 9px 10px 10px;
+        }
+
+        :host-context(.side-dock-layout) .help-list,
+        :host-context(.side-dock-layout) .transcripts,
+        :host-context(.side-dock-layout) .focus-form,
+        :host-context(.side-dock-layout) .knowledge-list,
+        :host-context(.side-dock-layout) .retrieval-list {
+            gap: 8px;
+        }
+
+        :host-context(.side-dock-layout) .empty-state,
+        :host-context(.side-dock-layout) .visual-card,
+        :host-context(.side-dock-layout) .help-card,
+        :host-context(.side-dock-layout) .transcript-item,
+        :host-context(.side-dock-layout) .resource-link,
+        :host-context(.side-dock-layout) .knowledge-item,
+        :host-context(.side-dock-layout) .retrieval-item,
+        :host-context(.side-dock-layout) .focus-toggle {
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        :host-context(.side-dock-layout) .empty-state,
+        :host-context(.side-dock-layout) .help-card,
+        :host-context(.side-dock-layout) .visual-card,
+        :host-context(.side-dock-layout) .transcript-item {
+            padding: 12px;
+        }
+
+        :host-context(.side-dock-layout) .primary-answer-card {
+            margin-bottom: 8px;
+            background: linear-gradient(180deg, rgba(14, 45, 78, 0.34), rgba(255, 255, 255, 0.035));
+        }
+
+        :host-context(.side-dock-layout) .card-header,
+        :host-context(.side-dock-layout) .visual-header {
+            gap: 8px;
+            margin-bottom: 7px;
+        }
+
+        :host-context(.side-dock-layout) .card-title,
+        :host-context(.side-dock-layout) .visual-title {
+            font-size: 13px;
+            line-height: 1.25;
+        }
+
+        :host-context(.side-dock-layout) .card-meta,
+        :host-context(.side-dock-layout) .visual-meta,
+        :host-context(.side-dock-layout) .mini-label,
+        :host-context(.side-dock-layout) .focus-label,
+        :host-context(.side-dock-layout) .speak-now-label {
+            font-size: 9px;
+        }
+
+        :host-context(.side-dock-layout) .speak-now,
+        :host-context(.side-dock-layout) .transcription,
+        :host-context(.side-dock-layout) .ai-response,
+        :host-context(.side-dock-layout) .visual-summary,
+        :host-context(.side-dock-layout) .focus-summary,
+        :host-context(.side-dock-layout) .knowledge-summary {
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        :host-context(.side-dock-layout) .supporting-points {
+            gap: 4px;
+            margin: 8px 0;
+        }
+
+        :host-context(.side-dock-layout) .supporting-point {
+            font-size: 11px;
+            line-height: 1.38;
+        }
+
+        :host-context(.side-dock-layout) .resource-grid {
+            grid-template-columns: 1fr;
+            gap: 7px;
+            margin-bottom: 8px;
+        }
+
+        :host-context(.side-dock-layout) .resource-link {
+            gap: 5px;
+            padding: 10px;
+        }
+
+        :host-context(.side-dock-layout) .resource-link-title {
+            font-size: 12px;
+        }
+
+        :host-context(.side-dock-layout) .resource-link-host {
+            font-size: 10px;
+        }
+
+        :host-context(.side-dock-layout) .context-overview {
+            grid-template-columns: 86px minmax(0, 1fr);
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        :host-context(.side-dock-layout) .context-overview img {
+            width: 86px;
+            height: 70px;
+            border-radius: 12px;
+        }
+
+        :host-context(.side-dock-layout) .context-pill {
+            padding: 4px 7px;
+            font-size: 9px;
+        }
+
+        :host-context(.side-dock-layout) .preview-frame,
+        :host-context(.side-dock-layout) .visual-preview,
+        :host-context(.side-dock-layout) .frame-grid,
+        :host-context(.side-dock-layout) .context-frame-strip {
+            margin-top: 8px;
+        }
+
+        :host-context(.side-dock-layout) .frame-grid {
+            gap: 6px;
+        }
+
+        :host-context(.side-dock-layout) .context-frame-strip img {
+            height: 50px;
+            border-radius: 10px;
+        }
+
+        :host-context(.side-dock-layout) .focus-field {
+            gap: 5px;
+        }
+
+        :host-context(.side-dock-layout) .focus-input,
+        :host-context(.side-dock-layout) .focus-textarea {
+            border-radius: 12px;
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+
+        :host-context(.side-dock-layout) .focus-textarea {
+            min-height: 86px;
+        }
+
+        :host-context(.side-dock-layout) .focus-toggle {
+            padding: 10px;
+        }
+
+        :host-context(.side-dock-layout) .notes {
+            padding: 8px 10px 9px;
+            background: rgba(3, 9, 16, 0.3);
+        }
+
+        :host-context(.side-dock-layout) textarea {
+            height: 48px;
+            min-height: 48px;
+            max-height: 68px;
+            padding: 8px 10px;
+            border-radius: 14px;
+            resize: vertical;
+            font-size: 12px;
+            line-height: 1.4;
+            background: rgba(255, 255, 255, 0.035);
+        }
+
+        :host-context(.side-dock-layout) .notes-actions {
+            margin-top: 7px;
+            gap: 6px;
+        }
+
+        :host-context(.side-dock-layout) .format-select {
+            padding: 7px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+        }
     `;
 
     static properties = {
@@ -1427,7 +1671,7 @@ export class SidePanel extends LitElement {
                 <div class="topbar">
                     <div class="source-chip" data-kind=${source.kind}>${source.label}</div>
                     <div class="visual-actions">
-                        <button class="ghost-button" @click=${this._openImportPicker}>Import Image/Video</button>
+                        <button class="ghost-button" @click=${this._openImportPicker}>Import media</button>
                         <button class="clear-button" @click=${this._clearVisualContext} ?disabled=${!this.importedVisualContext}>
                             Clear
                         </button>

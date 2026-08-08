@@ -17,16 +17,16 @@ import { inferProfileFromFocus, normalizeProfile } from '../../utils/profileUtil
 const logger = globalThis.logger || console;
 
 const DEFAULT_LAUNCH_FOCUS_CONFIG = {
-    jobTitle: 'HP sales and support representative',
+    jobTitle: 'live task assistant',
     objective:
-        'Listen immediately, answer customer questions with current HP product information, and surface concise next-step guidance for sales, support, troubleshooting, demos, and recommendations.',
+        'Listen immediately, watch the current screen, and surface concise answers, links, visuals, and next-step guidance for whatever workflow is active.',
     priorityTopics:
-        'HP laptops, workstations, desktops, printers, monitors, accessories, specs, compatibility, pricing, availability, warranty, support troubleshooting, and competitive positioning',
+        'CRM notes, product research, customer issues, troubleshooting, demos, recommendations, pricing, availability, specs, compatibility, and competitive positioning',
     guidelineText:
-        'Act like a prepared HP sales/support rep. Be concise, factual, and useful. Use web results for current specs, pricing, availability, and support facts. If a model, SKU, or customer need is ambiguous, give the best current answer and ask one targeted clarifying question.',
+        'Adapt to the current task instead of assuming one domain. Be concise, factual, and useful. Use web results for current specs, pricing, availability, policy, and technical facts. If the user need is ambiguous, give the best current answer and ask one targeted clarifying question.',
     webSearchEnabled: true,
     webSearchHint:
-        'Use current HP.com product pages, HP support documentation, HP store availability, and official vendor sources first. Use other reputable sources only when they add current context.',
+        'Use current official product pages, support documentation, pricing/availability pages, and task-relevant reputable sources first.',
 };
 
 function isBlank(value) {
@@ -50,9 +50,15 @@ function isStaleOrEmptyLaunchFocus(config = {}) {
         return true;
     }
 
+    const looksLikeOldHpDefault =
+        roleText === 'hp sales and support representative' &&
+        /hp laptops, workstations, desktops/i.test(coreText) &&
+        /act like a prepared hp sales\/support rep/i.test(coreText);
+
     return (
         /\b(job\s+)?interview\b/i.test(coreText) ||
         /please paste the exact hp\.com/i.test(coreText) ||
+        looksLikeOldHpDefault ||
         roleText === 'hp.com' ||
         /^https?:\/\//i.test(roleText)
     );
@@ -90,6 +96,15 @@ export class CheatingDaddyApp extends LitElement {
             overflow: hidden;
         }
 
+        .window-container.side-dock-layout {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 22px;
+            background: rgba(3, 9, 16, 0.18);
+            box-shadow:
+                0 22px 70px rgba(0, 0, 0, 0.24),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
         .container {
             display: flex;
             flex-direction: column;
@@ -122,6 +137,14 @@ export class CheatingDaddyApp extends LitElement {
             border: none;
         }
 
+        .side-dock-layout .main-content.assistant-view {
+            padding: 7px;
+            background: rgba(6, 12, 22, 0.18);
+            box-shadow: none;
+            backdrop-filter: blur(20px) saturate(145%);
+            -webkit-backdrop-filter: blur(20px) saturate(145%);
+        }
+
         .assistant-container {
             display: flex;
             height: 100%;
@@ -130,6 +153,24 @@ export class CheatingDaddyApp extends LitElement {
 
         .assistant-container assistant-view {
             flex: 1;
+        }
+
+        .side-dock-layout .assistant-container {
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .side-dock-layout .assistant-container assistant-view {
+            flex: 0 0 23%;
+            min-height: 158px;
+            max-height: 198px;
+        }
+
+        .side-dock-layout .assistant-container side-panel {
+            flex: 1 1 auto;
+            min-height: 0;
+            min-width: 0;
+            width: 100%;
         }
 
         .main-content.onboarding-view {
@@ -228,7 +269,7 @@ export class CheatingDaddyApp extends LitElement {
         this.selectedLanguage = localStorage.getItem('selectedLanguage') || 'en-US';
         this.selectedScreenshotInterval = localStorage.getItem('selectedScreenshotInterval') || '5';
         this.selectedImageQuality = localStorage.getItem('selectedImageQuality') || 'medium';
-        this.layoutMode = localStorage.getItem('layoutMode') || 'normal';
+        this.layoutMode = this.getInitialLayoutMode();
         this.advancedMode = localStorage.getItem('advancedMode') === 'true';
         this.responses = [];
         this.currentResponseIndex = -1;
@@ -324,6 +365,19 @@ export class CheatingDaddyApp extends LitElement {
 
     getLayoutMode() {
         return this.layoutMode;
+    }
+
+    getInitialLayoutMode() {
+        const storedLayoutMode = localStorage.getItem('layoutMode');
+        const migratedToDock = localStorage.getItem('layoutModeSideDockMigration') === 'true';
+
+        if (!migratedToDock && (!storedLayoutMode || storedLayoutMode === 'normal')) {
+            localStorage.setItem('layoutMode', 'side-dock');
+            localStorage.setItem('layoutModeSideDockMigration', 'true');
+            return 'side-dock';
+        }
+
+        return storedLayoutMode || 'side-dock';
     }
 
     getContentProtection() {
@@ -1399,9 +1453,10 @@ export class CheatingDaddyApp extends LitElement {
         const mainContentClass = `main-content ${
             this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border'
         }`;
+        const windowContainerClass = `window-container ${this.layoutMode === 'side-dock' ? 'side-dock-layout' : ''}`;
 
         return html`
-            <div class="window-container">
+            <div class="${windowContainerClass}">
                 <div class="container">
                     <app-header
                         .currentView=${this.currentView}
@@ -1427,12 +1482,8 @@ export class CheatingDaddyApp extends LitElement {
     }
 
     updateLayoutMode() {
-        // Apply or remove compact layout class to document root
-        if (this.layoutMode === 'compact') {
-            document.documentElement.classList.add('compact-layout');
-        } else {
-            document.documentElement.classList.remove('compact-layout');
-        }
+        document.documentElement.classList.toggle('compact-layout', this.layoutMode === 'compact');
+        document.documentElement.classList.toggle('side-dock-layout', this.layoutMode === 'side-dock');
     }
 
     async handleLayoutModeChange(layoutMode) {

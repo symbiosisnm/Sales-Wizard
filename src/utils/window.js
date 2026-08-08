@@ -8,6 +8,7 @@ let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
+const DOCK_MARGIN = 14;
 
 function ensureDataDirectories() {
     const homeDir = os.homedir();
@@ -76,11 +77,11 @@ function createWindow(sendToRenderer, randomNames = null) {
     mainWindow.setContentProtection(false);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-    // Center window at the top of the screen
+    // Center window at the top of the screen for setup/main views.
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth } = primaryDisplay.workAreaSize;
-    const x = Math.floor((screenWidth - windowWidth) / 2);
-    const y = 0;
+    const workArea = primaryDisplay.workArea;
+    const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
+    const y = workArea.y;
     mainWindow.setPosition(x, y);
 
     if (process.platform === 'win32') {
@@ -410,7 +411,71 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
         }
     });
 
-    function animateWindowResize(mainWindow, targetWidth, targetHeight, layoutMode) {
+    function getTargetBounds(viewName, layoutMode) {
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const workArea = primaryDisplay.workArea;
+        let targetWidth;
+        let targetHeight;
+
+        // Determine base size from layout mode
+        const baseWidth = layoutMode === 'compact' ? 700 : 900;
+        const baseHeight = layoutMode === 'compact' ? 300 : 400;
+
+        // Adjust height based on view
+        switch (viewName) {
+            case 'customize':
+            case 'settings':
+                targetWidth = baseWidth;
+                targetHeight = layoutMode === 'compact' ? 500 : 600;
+                break;
+            case 'help':
+                targetWidth = baseWidth;
+                targetHeight = layoutMode === 'compact' ? 450 : 550;
+                break;
+            case 'history':
+                targetWidth = baseWidth;
+                targetHeight = layoutMode === 'compact' ? 450 : 550;
+                break;
+            case 'advanced':
+                targetWidth = baseWidth;
+                targetHeight = layoutMode === 'compact' ? 400 : 500;
+                break;
+            case 'main':
+                targetWidth = baseWidth;
+                targetHeight = baseHeight;
+                break;
+            case 'assistant':
+                if (layoutMode === 'side-dock') {
+                    targetWidth = Math.min(540, Math.max(460, Math.floor(workArea.width * 0.28)));
+                    targetHeight = Math.max(520, workArea.height - DOCK_MARGIN * 2);
+                    targetHeight = Math.min(targetHeight, workArea.height);
+                    const verticalMargin = targetHeight >= workArea.height ? 0 : DOCK_MARGIN;
+                    return {
+                        height: targetHeight,
+                        width: targetWidth,
+                        x: workArea.x + workArea.width - targetWidth - DOCK_MARGIN,
+                        y: workArea.y + verticalMargin,
+                    };
+                }
+                targetWidth = layoutMode === 'compact' ? 980 : 1240;
+                targetHeight = layoutMode === 'compact' ? 460 : 660;
+                break;
+            case 'onboarding':
+            default:
+                targetWidth = baseWidth;
+                targetHeight = baseHeight;
+                break;
+        }
+
+        return {
+            height: targetHeight,
+            width: targetWidth,
+            x: Math.floor(workArea.x + (workArea.width - targetWidth) / 2),
+            y: workArea.y,
+        };
+    }
+
+    function animateWindowResize(mainWindow, targetBounds, layoutMode) {
         return new Promise(resolve => {
             // Check if window is destroyed before starting animation
             if (mainWindow.isDestroyed()) {
@@ -426,9 +491,11 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
             }
 
             const [startWidth, startHeight] = mainWindow.getSize();
+            const [startX, startY] = mainWindow.getPosition();
+            const { height: targetHeight, width: targetWidth, x: targetX, y: targetY } = targetBounds;
 
             // If already at target size, no need to animate
-            if (startWidth === targetWidth && startHeight === targetHeight) {
+            if (startWidth === targetWidth && startHeight === targetHeight && startX === targetX && startY === targetY) {
                 logger.info(`Window already at target size for ${layoutMode} mode`);
                 resolve();
                 return;
@@ -445,6 +512,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
 
             const widthDiff = targetWidth - startWidth;
             const heightDiff = targetHeight - startHeight;
+            const xDiff = targetX - startX;
+            const yDiff = targetY - startY;
 
             resizeAnimation = setInterval(() => {
                 currentFrame++;
@@ -455,6 +524,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
 
                 const currentWidth = Math.round(startWidth + widthDiff * easedProgress);
                 const currentHeight = Math.round(startHeight + heightDiff * easedProgress);
+                const currentX = Math.round(startX + xDiff * easedProgress);
+                const currentY = Math.round(startY + yDiff * easedProgress);
 
                 if (!mainWindow || mainWindow.isDestroyed()) {
                     clearInterval(resizeAnimation);
@@ -462,14 +533,12 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                     windowResizing = false;
                     return;
                 }
-                mainWindow.setSize(currentWidth, currentHeight);
-
-                // Re-center the window during animation
-                const primaryDisplay = screen.getPrimaryDisplay();
-                const { width: screenWidth } = primaryDisplay.workAreaSize;
-                const x = Math.floor((screenWidth - currentWidth) / 2);
-                const y = 0;
-                mainWindow.setPosition(x, y);
+                mainWindow.setBounds({
+                    height: currentHeight,
+                    width: currentWidth,
+                    x: currentX,
+                    y: currentY,
+                });
 
                 if (currentFrame >= totalFrames) {
                     clearInterval(resizeAnimation);
@@ -481,9 +550,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                         mainWindow.setResizable(false);
 
                         // Ensure final size is exact
-                        mainWindow.setSize(targetWidth, targetHeight);
-                        const finalX = Math.floor((screenWidth - targetWidth) / 2);
-                        mainWindow.setPosition(finalX, 0);
+                        mainWindow.setBounds(targetBounds);
                     }
 
                     logger.info(`Animation complete: ${targetWidth}x${targetHeight}`);
@@ -516,45 +583,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
 
             logger.info('Size update requested for view:', viewName, 'layout:', layoutMode);
 
-            let targetWidth, targetHeight;
-
-            // Determine base size from layout mode
-            const baseWidth = layoutMode === 'compact' ? 700 : 900;
-            const baseHeight = layoutMode === 'compact' ? 300 : 400;
-
-            // Adjust height based on view
-            switch (viewName) {
-                case 'customize':
-                case 'settings':
-                    targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 500 : 600;
-                    break;
-                case 'help':
-                    targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 450 : 550;
-                    break;
-                case 'history':
-                    targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 450 : 550;
-                    break;
-                case 'advanced':
-                    targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 400 : 500;
-                    break;
-                case 'main':
-                    targetWidth = baseWidth;
-                    targetHeight = baseHeight;
-                    break;
-                case 'assistant':
-                    targetWidth = layoutMode === 'compact' ? 980 : 1240;
-                    targetHeight = layoutMode === 'compact' ? 460 : 660;
-                    break;
-                case 'onboarding':
-                default:
-                    targetWidth = baseWidth;
-                    targetHeight = baseHeight;
-                    break;
-            }
+            const targetBounds = getTargetBounds(viewName, layoutMode);
 
             const [currentWidth, currentHeight] = mainWindow.getSize();
             logger.info('Current window size:', currentWidth, 'x', currentHeight);
@@ -564,7 +593,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                 logger.info('Interrupting current resize animation');
             }
 
-            await animateWindowResize(mainWindow, targetWidth, targetHeight, `${viewName} view (${layoutMode})`);
+            await animateWindowResize(mainWindow, targetBounds, `${viewName} view (${layoutMode})`);
 
             return { success: true };
         } catch (error) {

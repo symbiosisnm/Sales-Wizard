@@ -306,6 +306,103 @@ export class AssistantView extends LitElement {
         .save-button svg {
             stroke: currentColor !important;
         }
+
+        :host-context(.side-dock-layout) .response-container {
+            flex: 1;
+            min-height: 0;
+            height: auto;
+            border-radius: 18px;
+            padding: 13px 14px;
+            font-size: 14px;
+            line-height: 1.42;
+            background:
+                linear-gradient(180deg, rgba(5, 12, 22, 0.46), rgba(5, 12, 22, 0.24)),
+                radial-gradient(circle at top right, rgba(125, 211, 252, 0.1), transparent 34%);
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                0 10px 28px rgba(0, 0, 0, 0.14);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+        }
+
+        :host-context(.side-dock-layout) .response-container p {
+            margin: 0.55em 0;
+        }
+
+        :host-context(.side-dock-layout) .response-container h1,
+        :host-context(.side-dock-layout) .response-container h2,
+        :host-context(.side-dock-layout) .response-container h3,
+        :host-context(.side-dock-layout) .response-container h4,
+        :host-context(.side-dock-layout) .response-container h5,
+        :host-context(.side-dock-layout) .response-container h6 {
+            margin: 0.8em 0 0.35em;
+            line-height: 1.2;
+        }
+
+        :host-context(.side-dock-layout) .response-container h1 {
+            font-size: 1.35em;
+        }
+
+        :host-context(.side-dock-layout) .response-container h2 {
+            font-size: 1.22em;
+        }
+
+        :host-context(.side-dock-layout) .response-container h3 {
+            font-size: 1.08em;
+        }
+
+        :host-context(.side-dock-layout) .response-container ul,
+        :host-context(.side-dock-layout) .response-container ol {
+            margin: 0.55em 0;
+            padding-left: 1.35em;
+        }
+
+        :host-context(.side-dock-layout) .response-container li {
+            margin: 0.25em 0;
+        }
+
+        :host-context(.side-dock-layout) .text-input-container {
+            gap: 6px;
+            margin-top: 6px;
+            padding: 6px;
+            border-radius: 16px;
+            background: rgba(5, 12, 22, 0.34);
+            border-color: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(16px) saturate(135%);
+            -webkit-backdrop-filter: blur(16px) saturate(135%);
+        }
+
+        :host-context(.side-dock-layout) .text-input-container input {
+            min-width: 0;
+            padding: 8px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        :host-context(.side-dock-layout) .text-input-container input::placeholder {
+            color: rgba(255, 255, 255, 0.38);
+        }
+
+        :host-context(.side-dock-layout) .nav-button,
+        :host-context(.side-dock-layout) .save-button {
+            width: 30px;
+            height: 30px;
+            flex: 0 0 30px;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.055);
+        }
+
+        :host-context(.side-dock-layout) .nav-button svg,
+        :host-context(.side-dock-layout) .save-button svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        :host-context(.side-dock-layout) .response-counter {
+            min-width: auto;
+            font-size: 10px;
+        }
     `;
 
     static properties = {
@@ -647,7 +744,7 @@ export class AssistantView extends LitElement {
                     </svg>
                 </button>
 
-                <input type="text" id="textInput" placeholder="Type a message to the AI..." @keydown=${this.handleTextKeydown} />
+                <input type="text" id="textInput" placeholder="Ask a live question..." @keydown=${this.handleTextKeydown} />
 
                 <button class="nav-button" @click=${this.navigateToNextResponse} ?disabled=${this.currentResponseIndex >= this.responses.length - 1}>
                     <?xml version="1.0" encoding="UTF-8"?><svg
