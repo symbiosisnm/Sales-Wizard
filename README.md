@@ -78,7 +78,7 @@ requirements and configuration for this feature.
 
 | Variable         | Description                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------- |
-| `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Cheating Daddy`.              |
+| `APP_NAME`       | Human-readable name exposed by helper processes. Defaults to `Sales Wizard`.                |
 | `OPENAI_API_KEY` | Default API key used by the local backend when the desktop client does not pass one.        |
 | `OPENAI_REALTIME_MODEL` | Optional override for the realtime model. Defaults to `gpt-realtime-2`.            |
 | `OPENAI_TEXT_MODEL` | Optional override for one-shot text requests. Defaults to `gpt-5.4-mini`.                |

@@ -65,7 +65,7 @@ function isStaleOrEmptyLaunchFocus(config = {}) {
     );
 }
 
-export class CheatingDaddyApp extends LitElement {
+export class SalesWizardApp extends LitElement {
     static styles = css`
         * {
             box-sizing: border-box;
@@ -1978,4 +1978,4 @@ export class CheatingDaddyApp extends LitElement {
     }
 }
 
-customElements.define('cheating-daddy-app', CheatingDaddyApp);
+customElements.define('sales-wizard-app', SalesWizardApp);

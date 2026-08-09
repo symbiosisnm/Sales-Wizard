@@ -13,7 +13,7 @@ function getKeytar() {
     }
 }
 
-const SERVICE = 'cheating-daddy';
+const SERVICE = 'sales-wizard';
 const ACCOUNT = 'openai_api_key';
 const KEYCHAIN_TIMEOUT_MS = 1500;
 

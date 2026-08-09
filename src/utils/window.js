@@ -26,12 +26,12 @@ function setWindowMouseEventsIgnored(mainWindow, ignored) {
 
 function ensureDataDirectories() {
     const homeDir = os.homedir();
-    const cheddarDir = path.join(homeDir, 'cheddar');
-    const dataDir = path.join(cheddarDir, 'data');
+    const salesWizardDir = path.join(homeDir, 'sales-wizard');
+    const dataDir = path.join(salesWizardDir, 'data');
     const imageDir = path.join(dataDir, 'image');
     const audioDir = path.join(dataDir, 'audio');
 
-    [cheddarDir, dataDir, imageDir, audioDir].forEach(dir => {
+    [salesWizardDir, dataDir, imageDir, audioDir].forEach(dir => {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
@@ -273,7 +273,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
                 try {
                     if (mainWindow.isVisible()) mainWindow.hide();
                     mainWindow.webContents
-                        .executeJavaScript('document.querySelector("cheating-daddy-app")?.stopCapture?.()')
+                        .executeJavaScript('document.querySelector("sales-wizard-app")?.stopCapture?.()')
                         .catch(() => {});
                 } catch (err) {
                     logger.error('Error during panicHide:', err);
@@ -290,7 +290,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
         try {
             globalShortcut.register(keybinds.toggleMic, () => {
                 mainWindow.webContents
-                    .executeJavaScript('document.querySelector("cheating-daddy-app")?.handleToggleMicrophone?.()')
+                    .executeJavaScript('document.querySelector("sales-wizard-app")?.handleToggleMicrophone?.()')
                     .catch(() => {});
             });
             logger.info(`Registered toggleMic: ${keybinds.toggleMic}`);
@@ -316,7 +316,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 
                     // Use the new handleShortcut function
                     mainWindow.webContents.executeJavaScript(`
-                        document.querySelector('cheating-daddy-app')?.handleShortcut?.('${shortcutKey}');
+                        document.querySelector('sales-wizard-app')?.handleShortcut?.('${shortcutKey}');
                     `);
                 } catch (error) {
                     logger.error('Error handling next step shortcut:', error);
@@ -600,10 +600,10 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
             let viewName, layoutMode;
             try {
                 viewName = await event.sender.executeJavaScript(
-                    'document.querySelector("cheating-daddy-app")?.getCurrentView?.() || "main"'
+                    'document.querySelector("sales-wizard-app")?.getCurrentView?.() || "main"'
                 );
                 layoutMode = await event.sender.executeJavaScript(
-                    'document.querySelector("cheating-daddy-app")?.getLayoutMode?.() || "normal"'
+                    'document.querySelector("sales-wizard-app")?.getLayoutMode?.() || "normal"'
                 );
             } catch (error) {
                 logger.warn('Failed to get view/layout from renderer, using defaults:', error);
