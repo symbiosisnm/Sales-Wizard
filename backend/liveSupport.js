@@ -203,6 +203,29 @@ function hasFocusConfig(focusConfig = {}) {
   );
 }
 
+function hasExplicitWebLookupIntent(text = '') {
+  const normalized = cleanText(text).toLowerCase();
+  return (
+    /\b(search( the)? (internet|web|online)|web search|look( it)? up|find online|check online|browse( the web)|google( it| search)?)\b/.test(normalized) ||
+    /\b(find|get|give|provide|show|pull up|open)\b.{0,80}\b(exact )?(link|url|page|source|product)\b/.test(normalized) ||
+    /\b(exact|official|current|available|in[-\s]?stock)\b.{0,80}\b(link|url|page|product|store|sku|model)\b/.test(normalized)
+  );
+}
+
+function hasProductLookupIntent(text = '') {
+  const normalized = cleanText(text).toLowerCase();
+  if (!normalized) return false;
+
+  const hasCommerceConstraint =
+    /\$\s?\d|under\s+\$?\d|below\s+\$?\d|less than\s+\$?\d|price|pricing|availability|available|in[-\s]?stock|preconfigured|configuration|sku|product number|model number/.test(normalized);
+  const hasProductTerm =
+    /\b(product|store|shop|laptop|desktop|workstation|monitor|printer|server|phone|tablet|ram|memory|gb|tb|cpu|gpu|ssd|hdd)\b/.test(normalized);
+  const hasBrandOrOfficial =
+    /\b(official|manufacturer|store|hp|dell|lenovo|apple|microsoft|best buy|amazon|walmart|newegg|b&h)\b/.test(normalized);
+
+  return (hasCommerceConstraint && hasProductTerm) || (hasBrandOrOfficial && hasProductTerm && /\b(link|url|page|find|show|get|provide)\b/.test(normalized));
+}
+
 function shouldRunWebSearch(focusConfig = DEFAULT_FOCUS_CONFIG, turnText = '', { force = false } = {}) {
   const normalizedFocus = normalizeFocusConfig(focusConfig);
   const text = cleanText(`${turnText} ${normalizedFocus.webSearchHint}`).toLowerCase();
@@ -210,10 +233,11 @@ function shouldRunWebSearch(focusConfig = DEFAULT_FOCUS_CONFIG, turnText = '', {
     return false;
   }
 
-  const explicitlyRequested = /\b(search( the)? (internet|web|online)|web search|look( it)? up|find online|check online|browse( the web)?)\b/.test(text);
-  const freshnessSensitive = /\b(latest|today|current|recent|new|news|release|shipping|compare|version|price|market|trend|who is|what happened|202[5-9]|2026)\b/.test(text);
+  const explicitlyRequested = hasExplicitWebLookupIntent(turnText);
+  const productLookup = hasProductLookupIntent(turnText);
+  const freshnessSensitive = /\b(latest|today|current|recent|new|news|release|shipping|compare|version|price|pricing|market|trend|who is|what happened|202[5-9]|2026)\b|\$\s?\d/.test(text);
 
-  if (force || explicitlyRequested || freshnessSensitive) {
+  if (force || explicitlyRequested || productLookup || freshnessSensitive) {
     return true;
   }
 
@@ -221,6 +245,15 @@ function shouldRunWebSearch(focusConfig = DEFAULT_FOCUS_CONFIG, turnText = '', {
     normalizedFocus.webSearchEnabled &&
     /\b(company|competitor|standard|product|policy|incident|status|documentation|docs|version|release|roadmap|pricing|availability|stock|spec|specification)\b/.test(text)
   );
+}
+
+function shouldAnswerWithWebFirst(focusConfig = DEFAULT_FOCUS_CONFIG, turnText = '', { force = false } = {}) {
+  const normalizedFocus = normalizeFocusConfig(focusConfig);
+  if (!shouldRunWebSearch(normalizedFocus, turnText, { force })) {
+    return false;
+  }
+
+  return force || hasExplicitWebLookupIntent(turnText) || hasProductLookupIntent(turnText);
 }
 
 function tokenizeText(text = '') {
@@ -583,7 +616,9 @@ function buildSessionInstruction({
     '- Give enough substance to be useful: after the lead answer, add compact supporting bullets when the topic needs depth.',
     '- The latest user turn overrides stale earlier turns, old examples, older focus hints, and unrelated screen context.',
     '- Use visible screen context and any imported image or video context silently only when it is directly relevant to the latest user turn.',
-    '- Never say you cannot browse or search the internet. If grounded web context is provided, use it directly. If not, answer from the available context and ask for the exact fact to verify.',
+    '- Never say you cannot browse or search the internet.',
+    '- Never ask the user to open a site, apply filters, paste a link, provide a SKU, or do the lookup when the user is asking you to find current information.',
+    '- If a current lookup is needed and grounded web context has not arrived yet, keep the answer brief and wait for backend web context instead of delegating the search to the user.',
     '- Do not mention browsing mechanics or any non-OpenAI tools.',
   ];
 
@@ -731,6 +766,8 @@ function buildHelpPackRequest({
       sessionInstruction,
       'You are producing structured popup help cards for the right rail of a live overlay.',
       'Return short, high-signal guidance only.',
+      'If web search context is present, treat it as already-completed research and use it directly.',
+      'Never tell the user to open a website, apply filters, paste a link, provide a SKU, or perform the search themselves.',
       'Use 1 to 6 cards.',
       'Each card must contain a short title, exact words to say now, up to 5 supporting points, confidence, source_context, and show_visual.',
       'Do not be too sparse when the topic is technical or the user asked for more detail.',
@@ -833,6 +870,8 @@ function buildFallbackHelpPackRequest({
     instructions: [
       sessionInstruction,
       'You are producing structured popup help cards for a live overlay.',
+      'If web search context is present, use it as completed research and never ask the user to perform that search.',
+      'Never tell the user to open a website, apply filters, paste a link, provide a SKU, or perform the search themselves.',
       'Return only JSON.',
     ].join('\n\n'),
     input: [
@@ -952,6 +991,7 @@ function buildWebIntelRequest({
   const normalizedFocus = normalizeFocusConfig(focusConfig);
   const lines = [
     'Answer the latest user turn with fresh, current, web-grounded information.',
+    'You are responsible for doing the lookup. Do not delegate lookup steps back to the user.',
     'The latest user turn is the primary task.',
     'If older focus text, prior examples, or visual context are on a different topic, ignore them completely.',
     `User turn: ${turnText}`,
@@ -1002,8 +1042,13 @@ function buildWebIntelRequest({
     include: ['web_search_call.action.sources'],
     instructions: [
       'Use the web search tool for this request.',
+      'Do the lookup yourself. Never tell the user to open a website, apply filters, paste a link, provide a SKU, search Google, or browse manually.',
+      'For product, price, availability, SKU, RAM, configuration, or exact-link requests: search official manufacturer/store pages first, then reputable retailers only if official sources do not provide a direct match.',
+      'For product lookups, the summary must name concrete matching candidates or say no exact match was found after searching; include direct product/category URLs in sources.',
+      'Do not call a category, filtered listing, search result, or collection page an exact product link. Only direct product detail pages count as exact product links.',
+      'If the first result is a category/listing page but reveals a product name or SKU, search again for that product name/SKU and return the direct product page if available.',
       'Set should_search to true when web results were used.',
-      'Write summary as the direct user-facing answer in 2 to 6 sentences.',
+      'Write summary as the direct user-facing answer in 2 to 8 concise sentences.',
       'Do not say you cannot browse, search, or access the internet.',
       'Return only sources that were actually useful to the answer.',
     ].join('\n'),
@@ -1044,7 +1089,9 @@ module.exports = {
   buildWebIntelRequest,
   chunkReferenceText,
   extractJsonObject,
+  hasExplicitWebLookupIntent,
   hasFocusConfig,
+  hasProductLookupIntent,
   normalizeFocusConfig,
   normalizeSessionOptions,
   normalizeHelpCardPayload,
@@ -1053,5 +1100,6 @@ module.exports = {
   retrieveFocusSnippets,
   resolveOutputLanguage,
   resolveTranscriptionLanguage,
+  shouldAnswerWithWebFirst,
   shouldRunWebSearch,
 };

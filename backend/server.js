@@ -32,6 +32,8 @@ const {
   normalizeSessionOptions,
   normalizeWebIntelPayload,
   retrieveFocusSnippets,
+  hasProductLookupIntent,
+  shouldAnswerWithWebFirst,
   shouldRunWebSearch,
 } = require('./liveSupport');
 
@@ -1004,6 +1006,44 @@ wss.on('connection', ws => {
     return payload;
   };
 
+  const isDelegatedLookupAnswer = text =>
+    /\b(please|ask|tell)\b.{0,120}\b(open|apply filters|paste|provide|send|search|look up|google)\b/i.test(String(text || '')) ||
+    /\bpaste the exact\b/i.test(String(text || '')) ||
+    /\bapply filters\b/i.test(String(text || ''));
+
+  const buildSourceBackedWebSummary = (turnText, sources = []) => {
+    const usableSources = sources.filter(source => source?.title && source?.url).slice(0, 5);
+    if (!usableSources.length) {
+      return 'I searched live sources but did not get a verified source result yet. Do not ask the user to perform the lookup; try a narrower product name, SKU, or store if the next turn needs more precision.';
+    }
+
+    const sourceText = usableSources
+      .map((source, index) => `${index + 1}. ${source.title} (${source.url})`)
+      .join(' ');
+    return `I found live web results for: ${String(turnText || '').trim()}. Use these sources directly instead of asking the user to search: ${sourceText}`;
+  };
+
+  const isListingOrSearchSource = source => {
+    const text = `${source?.title || ''} ${source?.url || ''}`.toLowerCase();
+    return /\b(search|results|category|categories|collection|collections|filtered|filter|shop all|laptops)\b/.test(text) ||
+      /\/vwa\/|\/slp\/|\/category\/|\/search|[?&](q|query|filter|filters)=/i.test(String(source?.url || ''));
+  };
+
+  const shouldRefineProductLookup = (turnText, webIntel = {}) => {
+    if (!hasProductLookupIntent(turnText)) {
+      return false;
+    }
+    const summary = String(webIntel.summary || '').toLowerCase();
+    const sources = Array.isArray(webIntel.sources) ? webIntel.sources : [];
+    if (!sources.length) {
+      return false;
+    }
+    return (
+      /category|filtered|filter page|listing|candidate|product identifier|sku|model number|not exact/i.test(summary) ||
+      sources.every(isListingOrSearchSource)
+    );
+  };
+
   const formatGroundedWebAnswer = webIntel => {
     const summary = String(webIntel?.summary || '').trim();
     if (!summary) {
@@ -1049,6 +1089,31 @@ wss.on('connection', ws => {
     });
   };
 
+  const normalizeWebIntelResponse = (payload, turnText) => {
+    const parsed = payload?.output_parsed || extractJsonObject(extractResponseText(payload));
+    const normalized = normalizeWebIntelPayload(parsed);
+    const toolSources = extractWebSearchSources(payload);
+    const mergedSources = [...normalized.sources];
+    const sourceKeys = new Set(mergedSources.map(source => `${source.title}::${source.url}`));
+    for (const source of toolSources) {
+      const key = `${source.title}::${source.url}`;
+      if (!sourceKeys.has(key)) {
+        sourceKeys.add(key);
+        mergedSources.push(source);
+      }
+    }
+    const sources = mergedSources.slice(0, 5);
+    const summary = isDelegatedLookupAnswer(normalized.summary)
+      ? buildSourceBackedWebSummary(turnText, sources)
+      : normalized.summary;
+    return {
+      ...normalized,
+      summary,
+      sources,
+      turnHash: buildHelpPackHash(turnText),
+    };
+  };
+
   const maybeGenerateWebIntel = async (turnText, { force = false } = {}) => {
     const normalizedFocus = normalizeFocusConfig(currentFocusConfig);
     if (!shouldRunWebSearch(normalizedFocus, turnText, { force })) {
@@ -1073,29 +1138,45 @@ wss.on('connection', ws => {
     });
 
     const payload = await postWebSearchRequest(requestBody);
-    const parsed = payload?.output_parsed || extractJsonObject(extractResponseText(payload));
-    const normalized = normalizeWebIntelPayload(parsed);
-    const toolSources = extractWebSearchSources(payload);
-    const mergedSources = [...normalized.sources];
-    const sourceKeys = new Set(mergedSources.map(source => `${source.title}::${source.url}`));
-    for (const source of toolSources) {
-      const key = `${source.title}::${source.url}`;
-      if (!sourceKeys.has(key)) {
-        sourceKeys.add(key);
-        mergedSources.push(source);
+    let nextWebIntel = normalizeWebIntelResponse(payload, turnText);
+
+    if (shouldRefineProductLookup(turnText, nextWebIntel)) {
+      sendStatus('Refining product link...');
+      const priorSources = nextWebIntel.sources
+        .map((source, index) => `${index + 1}. ${source.title} (${source.url})`)
+        .join('\n');
+      const refinedPayload = await postWebSearchRequest(
+        buildWebIntelRequest({
+          focusConfig: normalizedFocus,
+          retrievedFocusSnippets: retrieval.snippets,
+          retrievedKnowledgeItems: retrieval.matchedKnowledgeItems,
+          turnText: [
+            `Original product lookup: ${turnText}`,
+            'Refine the result. Find direct product detail page URLs, not category, filtered listing, search result, or collection URLs.',
+            'If a prior result revealed a product name, model number, or SKU, search that exact identifier now.',
+            'Do not call a listing/category URL an exact product link. If no direct product page is found, say that plainly.',
+            nextWebIntel.summary ? `Prior summary: ${nextWebIntel.summary}` : '',
+            priorSources ? `Prior sources:\n${priorSources}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          visualContextSummary: retrieval.visualSummary,
+          model: currentWebSearchModel,
+        })
+      );
+      const refinedWebIntel = normalizeWebIntelResponse(refinedPayload, turnText);
+      if (refinedWebIntel.summary || refinedWebIntel.sources.length) {
+        nextWebIntel = refinedWebIntel;
       }
     }
-    lastWebIntel = {
-      ...normalized,
-      sources: mergedSources.slice(0, 5),
-      turnHash: buildHelpPackHash(turnText),
-    };
+
+    lastWebIntel = nextWebIntel;
     return lastWebIntel;
   };
 
   const runDeepTurnAnalysis = async (
     turnText,
-    { forceHelp = false, revision, allowGroundedAnswer = false } = {}
+    { forceHelp = false, revision, allowGroundedAnswer = false, fallbackToRealtime = false } = {}
   ) => {
     let webIntel = null;
 
@@ -1123,8 +1204,12 @@ wss.on('connection', ws => {
       }
     }
 
-    if (allowGroundedAnswer && Boolean(webIntel?.summary) && !responsePendingOrActive) {
-      emitGroundedWebAnswer(webIntel);
+    if (allowGroundedAnswer && !responsePendingOrActive) {
+      if (webIntel?.summary) {
+        emitGroundedWebAnswer(webIntel);
+      } else if (fallbackToRealtime) {
+        requestModelResponse();
+      }
     }
 
     queueHelpPack({ force: forceHelp, turnText });
@@ -1517,14 +1602,16 @@ wss.on('connection', ws => {
 
     lastTurnText = trimmed;
     const revision = ++analysisRevision;
+    const webFirst = shouldAnswerWithWebFirst(currentFocusConfig, trimmed, { force: forceHelp });
 
-    if (regenerateResponse) {
+    if (regenerateResponse && !webFirst) {
       requestModelResponse();
     }
 
     void runDeepTurnAnalysis(trimmed, {
-      allowGroundedAnswer: false,
-      forceHelp,
+      allowGroundedAnswer: regenerateResponse && webFirst,
+      fallbackToRealtime: regenerateResponse && webFirst,
+      forceHelp: forceHelp || webFirst,
       revision,
     });
   };

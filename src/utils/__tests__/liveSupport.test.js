@@ -8,9 +8,12 @@ const {
   buildSessionInstruction,
   buildWebIntelRequest,
   contextIsRelevantToTurn,
+  hasExplicitWebLookupIntent,
+  hasProductLookupIntent,
   normalizeFocusConfig,
   normalizeHelpCardPayload,
   retrieveFocusSnippets,
+  shouldAnswerWithWebFirst,
   shouldRunWebSearch,
 } = require('../../../backend/liveSupport');
 
@@ -40,7 +43,9 @@ test('buildSessionInstruction uses the selected profile, context, and output lan
   assert.match(instruction, /Senior hardware engineer interview/i);
   assert.match(instruction, /Demonstrate strong board bring-up depth/i);
   assert.match(instruction, /Current web search is enabled/i);
+  assert.match(instruction, /Never ask the user to open a site/i);
   assert.doesNotMatch(instruction, /SEARCH TOOL USAGE/i);
+  assert.doesNotMatch(instruction, /ask for the exact fact to verify/i);
 });
 
 test('buildRealtimeSessionConfig only sets transcription language when locale mapping is supported', () => {
@@ -169,6 +174,19 @@ test('shouldRunWebSearch fires for explicit or freshness-sensitive turns even wi
   );
 });
 
+test('product and exact-link lookups use grounded web first', () => {
+  const turn =
+    'Please open the official HP US Store, apply filters for 32 GB RAM and a price under $1,500, and paste the exact product link for a preconfigured laptop.';
+  const focusConfig = normalizeFocusConfig({
+    webSearchEnabled: true,
+  });
+
+  assert.strictEqual(hasExplicitWebLookupIntent(turn), true);
+  assert.strictEqual(hasProductLookupIntent(turn), true);
+  assert.strictEqual(shouldRunWebSearch(focusConfig, turn), true);
+  assert.strictEqual(shouldAnswerWithWebFirst(focusConfig, turn), true);
+});
+
 test('buildWebIntelRequest includes the web search tool and current focus context', () => {
   const request = buildWebIntelRequest({
     focusConfig: normalizeFocusConfig({
@@ -189,6 +207,9 @@ test('buildWebIntelRequest includes the web search tool and current focus contex
   assert.deepStrictEqual(request.tools, [{ type: 'web_search' }]);
   assert.deepStrictEqual(request.include, ['web_search_call.action.sources']);
   assert.match(request.instructions, /Use the web search tool/i);
+  assert.match(request.instructions, /Do the lookup yourself/i);
+  assert.match(request.instructions, /Never tell the user to open a website/i);
+  assert.match(request.instructions, /Only direct product detail pages count as exact product links/i);
   assert.match(request.instructions, /Do not say you cannot browse/i);
   assert.match(request.input[0].content[0].text, /USB4 v2 rollout status/i);
   assert.doesNotMatch(request.input[0].content[0].text, /Resume bullet about high-speed bus validation/i);
