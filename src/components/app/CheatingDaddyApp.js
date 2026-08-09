@@ -15,6 +15,7 @@ import { inferProfileFromFocus, normalizeProfile } from '../../utils/profileUtil
 
 // Use global logger if available, falling back to the imported logger or console
 const logger = globalThis.logger || console;
+const GLASS_PANEL_POSITIONS_VERSION = '2';
 
 const DEFAULT_LAUNCH_FOCUS_CONFIG = {
     jobTitle: 'live task assistant',
@@ -199,8 +200,8 @@ export class CheatingDaddyApp extends LitElement {
 
         .glass-frame-layout app-header {
             position: absolute;
-            top: 16px;
-            left: 18px;
+            top: var(--glass-header-y, 16px);
+            left: var(--glass-header-x, 18px);
             z-index: 5;
             width: min(430px, 31vw);
             pointer-events: auto;
@@ -228,8 +229,8 @@ export class CheatingDaddyApp extends LitElement {
 
         .glass-frame-layout .assistant-container assistant-view {
             position: absolute;
-            left: 18px;
-            top: 74px;
+            left: var(--glass-live-x, 18px);
+            top: var(--glass-live-y, 74px);
             z-index: 4;
             width: min(430px, 31vw);
             height: clamp(190px, 24vh, 280px);
@@ -238,13 +239,78 @@ export class CheatingDaddyApp extends LitElement {
 
         .glass-frame-layout .assistant-container side-panel {
             position: absolute;
-            top: 16px;
-            right: 18px;
-            bottom: 18px;
+            top: var(--glass-info-y, 16px);
+            left: var(--glass-info-x, calc(100vw - min(430px, 30vw) - 18px));
+            right: auto;
+            bottom: auto;
             z-index: 4;
             width: min(430px, 30vw);
+            height: min(820px, calc(100vh - 34px));
             min-width: 390px;
             pointer-events: auto;
+        }
+
+        .glass-panel-control {
+            position: absolute;
+            z-index: 8;
+            pointer-events: auto;
+            -webkit-app-region: no-drag;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(4, 11, 20, 0.46);
+            color: rgba(255, 255, 255, 0.76);
+            box-shadow:
+                0 12px 32px rgba(0, 0, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(18px) saturate(145%);
+            -webkit-backdrop-filter: blur(18px) saturate(145%);
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .glass-panel-control:active {
+            cursor: grabbing;
+            transform: scale(0.98);
+        }
+
+        .glass-live-control {
+            left: calc(var(--glass-live-x, 18px) + var(--glass-live-width, 430px) + 6px);
+            top: calc(var(--glass-live-y, 74px) + 14px);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        .glass-info-control {
+            left: calc(var(--glass-info-x, calc(100vw - var(--glass-info-width, 430px) - 18px)) - 42px);
+            top: calc(var(--glass-info-y, 16px) + 18px);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        .glass-header-control {
+            left: calc(var(--glass-header-x, 18px) + 10px);
+            top: calc(var(--glass-header-y, 16px) + 42px);
+        }
+
+        .glass-reset-control {
+            left: calc(var(--glass-info-x, calc(100vw - var(--glass-info-width, 430px) - 18px)) - 42px);
+            top: calc(var(--glass-info-y, 16px) + 118px);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            cursor: pointer;
+        }
+
+        .glass-reset-control:active {
+            transform: scale(0.98);
         }
 
         @media (max-width: 1180px) {
@@ -341,6 +407,7 @@ export class CheatingDaddyApp extends LitElement {
         _awaitingNewResponse: { state: true },
         shouldAnimateResponse: { type: Boolean },
         audioLevel: { type: Number },
+        glassPanelPositions: { type: Object },
     };
 
     constructor() {
@@ -408,6 +475,11 @@ export class CheatingDaddyApp extends LitElement {
         this._lastPointerPoint = { x: -1, y: -1 };
         this._pointerUpdateFrame = null;
         this._panelInputFocused = false;
+        this.glassPanelPositions = this.getStoredGlassPanelPositions();
+        this._glassPanelDrag = null;
+        this._handleGlassPanelDragMove = e => this.handleGlassPanelDragMove(e);
+        this._handleGlassPanelDragEnd = () => this.handleGlassPanelDragEnd();
+        this._handleGlassFrameResize = () => this.handleGlassFrameResize();
         this._handlePerimeterMouseMove = e => this.handlePerimeterMouseMove(e);
         this._handlePerimeterMouseLeave = () => this.updatePerimeterPointerMode(true);
         this._handlePerimeterFocusIn = () => {
@@ -443,6 +515,7 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         void this.loadKnowledgeItems();
+        window.addEventListener('resize', this._handleGlassFrameResize);
         window.addEventListener('mousemove', this._handlePerimeterMouseMove, { passive: true });
         window.addEventListener('mouseleave', this._handlePerimeterMouseLeave, { passive: true });
         this.addEventListener('focusin', this._handlePerimeterFocusIn);
@@ -462,8 +535,12 @@ export class CheatingDaddyApp extends LitElement {
         this.clearPendingFocusSync();
 
         super.disconnectedCallback();
+        window.removeEventListener('resize', this._handleGlassFrameResize);
         window.removeEventListener('mousemove', this._handlePerimeterMouseMove);
         window.removeEventListener('mouseleave', this._handlePerimeterMouseLeave);
+        window.removeEventListener('pointermove', this._handleGlassPanelDragMove);
+        window.removeEventListener('pointerup', this._handleGlassPanelDragEnd);
+        window.removeEventListener('pointercancel', this._handleGlassPanelDragEnd);
         this.removeEventListener('focusin', this._handlePerimeterFocusIn);
         this.removeEventListener('focusout', this._handlePerimeterFocusOut);
         void this.setPointerPassThrough(false);
@@ -480,6 +557,184 @@ export class CheatingDaddyApp extends LitElement {
 
     getLayoutMode() {
         return this.layoutMode;
+    }
+
+    getGlassPanelMetrics() {
+        const viewportWidth = Math.max(800, window.innerWidth || 1440);
+        const viewportHeight = Math.max(600, window.innerHeight || 870);
+        const liveWidth = Math.min(430, viewportWidth * 0.31);
+        const liveHeight = Math.min(280, Math.max(190, viewportHeight * 0.24));
+        const headerWidth = liveWidth;
+        const headerHeight = 48;
+        const infoWidth = Math.max(390, Math.min(430, viewportWidth * 0.3));
+        const infoHeight = Math.min(820, viewportHeight - 34);
+
+        return {
+            header: { width: headerWidth, height: headerHeight },
+            live: { width: liveWidth, height: liveHeight },
+            info: { width: infoWidth, height: infoHeight },
+        };
+    }
+
+    getDefaultGlassPanelPositions() {
+        const viewportWidth = Math.max(800, window.innerWidth || 1440);
+        const metrics = this.getGlassPanelMetrics();
+        return {
+            header: { x: 18, y: 16 },
+            live: { x: 18, y: 74 },
+            info: { x: viewportWidth - metrics.info.width - 18, y: 16 },
+        };
+    }
+
+    getStoredGlassPanelPositions() {
+        try {
+            if (localStorage.getItem('glassPanelPositionsVersion') !== GLASS_PANEL_POSITIONS_VERSION) {
+                localStorage.removeItem('glassPanelPositions');
+                localStorage.setItem('glassPanelPositionsVersion', GLASS_PANEL_POSITIONS_VERSION);
+                return {};
+            }
+            const parsed = JSON.parse(localStorage.getItem('glassPanelPositions') || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_error) {
+            return {};
+        }
+    }
+
+    clampGlassPanelPosition(panel, position = {}) {
+        const viewportWidth = Math.max(800, window.innerWidth || 1440);
+        const viewportHeight = Math.max(600, window.innerHeight || 870);
+        const metrics = this.getGlassPanelMetrics()[panel] || { width: 320, height: 160 };
+        const margin = 8;
+        const requestedX = Number.isFinite(position.x) ? position.x : 0;
+        const requestedY = Number.isFinite(position.y) ? position.y : 0;
+        return {
+            x: Math.round(Math.min(Math.max(requestedX, margin), Math.max(margin, viewportWidth - metrics.width - margin))),
+            y: Math.round(Math.min(Math.max(requestedY, margin), Math.max(margin, viewportHeight - metrics.height - margin))),
+        };
+    }
+
+    getEffectiveGlassPanelPositions() {
+        const defaults = this.getDefaultGlassPanelPositions();
+        return {
+            header: this.clampGlassPanelPosition('header', {
+                ...defaults.header,
+                ...(this.glassPanelPositions?.header || {}),
+            }),
+            live: this.clampGlassPanelPosition('live', {
+                ...defaults.live,
+                ...(this.glassPanelPositions?.live || {}),
+            }),
+            info: this.clampGlassPanelPosition('info', {
+                ...defaults.info,
+                ...(this.glassPanelPositions?.info || {}),
+            }),
+        };
+    }
+
+    getGlassFrameStyle() {
+        if (this.layoutMode !== 'glass-frame') {
+            return '';
+        }
+
+        const positions = this.getEffectiveGlassPanelPositions();
+        const metrics = this.getGlassPanelMetrics();
+        return [
+            `--glass-header-x:${positions.header.x}px`,
+            `--glass-header-y:${positions.header.y}px`,
+            `--glass-live-x:${positions.live.x}px`,
+            `--glass-live-y:${positions.live.y}px`,
+            `--glass-live-width:${Math.round(metrics.live.width)}px`,
+            `--glass-info-x:${positions.info.x}px`,
+            `--glass-info-y:${positions.info.y}px`,
+            `--glass-info-width:${Math.round(metrics.info.width)}px`,
+        ].join(';');
+    }
+
+    persistGlassPanelPositions(positions = this.glassPanelPositions) {
+        localStorage.setItem('glassPanelPositionsVersion', GLASS_PANEL_POSITIONS_VERSION);
+        localStorage.setItem('glassPanelPositions', JSON.stringify(positions || {}));
+    }
+
+    resetGlassPanelPositions() {
+        localStorage.removeItem('glassPanelPositions');
+        localStorage.setItem('glassPanelPositionsVersion', GLASS_PANEL_POSITIONS_VERSION);
+        this.glassPanelPositions = {};
+        this.requestUpdate();
+        this.queuePerimeterPointerUpdate();
+    }
+
+    startGlassPanelDrag(e, panel) {
+        if (!this.isGlassFrameAssistant()) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        const positions = this.getEffectiveGlassPanelPositions();
+        const origin = positions[panel] || { x: e.clientX, y: e.clientY };
+        this._glassPanelDrag = {
+            panel,
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            originX: origin.x,
+            originY: origin.y,
+        };
+        e.currentTarget?.setPointerCapture?.(e.pointerId);
+        void this.setPointerPassThrough(false);
+        window.addEventListener('pointermove', this._handleGlassPanelDragMove);
+        window.addEventListener('pointerup', this._handleGlassPanelDragEnd, { once: true });
+        window.addEventListener('pointercancel', this._handleGlassPanelDragEnd, { once: true });
+    }
+
+    handleGlassPanelDragMove(e) {
+        if (!this._glassPanelDrag) {
+            return;
+        }
+
+        e.preventDefault();
+        const { panel, startX, startY, originX, originY } = this._glassPanelDrag;
+        const nextPosition = this.clampGlassPanelPosition(panel, {
+            x: originX + e.clientX - startX,
+            y: originY + e.clientY - startY,
+        });
+        this.glassPanelPositions = {
+            ...this.getEffectiveGlassPanelPositions(),
+            [panel]: nextPosition,
+        };
+        this.requestUpdate();
+    }
+
+    handleGlassPanelDragEnd() {
+        if (!this._glassPanelDrag) {
+            return;
+        }
+
+        window.removeEventListener('pointermove', this._handleGlassPanelDragMove);
+        window.removeEventListener('pointerup', this._handleGlassPanelDragEnd);
+        window.removeEventListener('pointercancel', this._handleGlassPanelDragEnd);
+        this._glassPanelDrag = null;
+        const positions = this.getEffectiveGlassPanelPositions();
+        this.glassPanelPositions = positions;
+        this.persistGlassPanelPositions(positions);
+        this.requestUpdate();
+        this.queuePerimeterPointerUpdate();
+    }
+
+    handleGlassFrameResize() {
+        if (this.layoutMode !== 'glass-frame') {
+            return;
+        }
+        if (!Object.keys(this.glassPanelPositions || {}).length) {
+            this.requestUpdate();
+            this.queuePerimeterPointerUpdate();
+            return;
+        }
+        const positions = this.getEffectiveGlassPanelPositions();
+        this.glassPanelPositions = positions;
+        this.persistGlassPanelPositions(positions);
+        this.requestUpdate();
+        this.queuePerimeterPointerUpdate();
     }
 
     isGlassFrameAssistant() {
@@ -504,7 +759,7 @@ export class CheatingDaddyApp extends LitElement {
 
     isPointOverOverlayPanel(x, y) {
         const element = this.shadowRoot?.elementFromPoint?.(x, y);
-        return Boolean(element?.closest?.('app-header, assistant-view, side-panel'));
+        return Boolean(element?.closest?.('app-header, assistant-view, side-panel, .glass-panel-control'));
     }
 
     updatePerimeterPointerMode(forcePassthrough = false) {
@@ -1630,6 +1885,39 @@ export class CheatingDaddyApp extends LitElement {
         }
     }
 
+    renderGlassPanelControls() {
+        if (!this.isGlassFrameAssistant()) {
+            return '';
+        }
+
+        return html`
+            <button
+                class="glass-panel-control glass-header-control"
+                title="Drag to move the status controls"
+                @pointerdown=${e => this.startGlassPanelDrag(e, 'header')}
+            >
+                Move status
+            </button>
+            <button
+                class="glass-panel-control glass-live-control"
+                title="Drag to move the live answer panel"
+                @pointerdown=${e => this.startGlassPanelDrag(e, 'live')}
+            >
+                Move live
+            </button>
+            <button
+                class="glass-panel-control glass-info-control"
+                title="Drag to move the help and media panel"
+                @pointerdown=${e => this.startGlassPanelDrag(e, 'info')}
+            >
+                Move info
+            </button>
+            <button class="glass-panel-control glass-reset-control" title="Reset panel positions" @click=${() => this.resetGlassPanelPositions()}>
+                Reset panels
+            </button>
+        `;
+    }
+
     render() {
         const mainContentClass = `main-content ${
             this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border'
@@ -1639,7 +1927,7 @@ export class CheatingDaddyApp extends LitElement {
         }`;
 
         return html`
-            <div class="${windowContainerClass}">
+            <div class="${windowContainerClass}" style="${this.getGlassFrameStyle()}">
                 <div class="container">
                     <app-header
                         .currentView=${this.currentView}
@@ -1659,6 +1947,7 @@ export class CheatingDaddyApp extends LitElement {
                     <div class="${mainContentClass}">
                         <div class="view-container">${this.renderCurrentView()}</div>
                     </div>
+                    ${this.renderGlassPanelControls()}
                 </div>
             </div>
         `;
