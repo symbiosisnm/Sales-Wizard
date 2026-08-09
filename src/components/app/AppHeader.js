@@ -301,7 +301,6 @@ export class AppHeader extends LitElement {
 
     getViewTitle() {
         const titles = {
-            onboarding: `Welcome to ${this.appName}`,
             main: this.appName,
             customize: 'Customize',
             help: 'Help & Shortcuts',

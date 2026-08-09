@@ -380,12 +380,6 @@ export class MainView extends LitElement {
         this.onAPIKeyHelp();
     }
 
-    handleResetOnboarding() {
-        localStorage.removeItem('onboardingCompleted');
-        // Refresh the page to trigger onboarding
-        window.location.reload();
-    }
-
     loadLayoutMode() {
         const savedLayoutMode = localStorage.getItem('layoutMode');
         if (savedLayoutMode && savedLayoutMode !== 'normal') {
@@ -482,7 +476,7 @@ export class MainView extends LitElement {
 
     render() {
         return html`
-            <div class="welcome">Welcome</div>
+            <div class="welcome">Sales Wizard</div>
 
             <div class="input-group">
                 <input
@@ -496,111 +490,10 @@ export class MainView extends LitElement {
                     ${this.getStartButtonText()}
                 </button>
             </div>
-            <div class="focus-stack">
-                <div class="focus-title">What Should I Focus On?</div>
-                <div class="focus-caption">Optional. If left blank, the overlay launches as a general live task assistant with live web search enabled.</div>
-                <div class="focus-field">
-                    <div class="focus-label">Role / Purpose</div>
-                    <input
-                        class=${this.showFocusError ? 'focus-error' : ''}
-                        type="text"
-                        placeholder="Hardware design review, car diagnostics, product demo, customer support call"
-                        .value=${this.focusConfig?.jobTitle || ''}
-                        @input=${e => this.handleFocusInput('focusJobTitle', 'jobTitle', e)}
-                    />
-                </div>
-                <div class="focus-field">
-                    <div class="focus-label">Target Outcome</div>
-                    <input
-                        class=${this.showFocusError ? 'focus-error' : ''}
-                        type="text"
-                        placeholder="Get a stronger answer, explain the diagram clearly, diagnose the fault faster, close the call cleanly"
-                        .value=${this.focusConfig?.objective || ''}
-                        @input=${e => this.handleFocusInput('focusObjective', 'objective', e)}
-                    />
-                </div>
-                <div class="focus-field">
-                    <div class="focus-label">Priority Topics</div>
-                    <input
-                        type="text"
-                        placeholder="DDR timing, objections handling, root-cause isolation, product comparison"
-                        .value=${this.focusConfig?.priorityTopics || ''}
-                        @input=${e => this.handleFocusInput('focusPriorityTopics', 'priorityTopics', e)}
-                    />
-                </div>
-                <div class="focus-field">
-                    <div class="focus-label">Guidelines</div>
-                    <input
-                        type="text"
-                        placeholder="Be direct, avoid jargon, ask for serial number first, keep answers short"
-                        .value=${this.focusConfig?.guidelineText || ''}
-                        @input=${e => this.handleFocusInput('focusGuidelineText', 'guidelineText', e)}
-                    />
-                </div>
-                <div class="focus-field">
-                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                        <span>
-                            <div class="focus-label">Web Search</div>
-                            <div class="focus-caption">Let OpenAI pull current external facts when the task needs freshness.</div>
-                        </span>
-                        <input
-                            type="checkbox"
-                            .checked=${Boolean(this.focusConfig?.webSearchEnabled)}
-                            @change=${e => {
-                                localStorage.setItem('focusWebSearchEnabled', e.target.checked ? 'true' : 'false');
-                                this.emitFocusConfigChange({ webSearchEnabled: e.target.checked });
-                            }}
-                        />
-                    </label>
-                </div>
-                ${this.renderKnowledgePicker()}
-                <div class="focus-field">
-                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                        <span>
-                            <div class="focus-label">Capture System Audio</div>
-                            <div class="focus-caption">Mix shared-tab or shared-screen audio into the live transcript when the platform allows it.</div>
-                        </span>
-                        <input
-                            type="checkbox"
-                            .checked=${Boolean(this.sessionOptions?.captureSystemAudio)}
-                            @change=${e => this.emitSessionOptionsChange({ captureSystemAudio: e.target.checked })}
-                        />
-                    </label>
-                </div>
-                <div class="focus-field">
-                    <div class="focus-label">Video Assist</div>
-                    <select
-                        style="background:var(--input-background);color:var(--text-color);border:1px solid var(--button-border);padding:10px 14px;border-radius:8px;font-size:14px;"
-                        .value=${this.sessionOptions?.videoAssistMode || 'rolling-clip'}
-                        @change=${e => this.emitSessionOptionsChange({ videoAssistMode: e.target.value })}
-                    >
-                        <option value="rolling-clip">Rolling clip assist</option>
-                        <option value="imported">Imported visuals only</option>
-                        <option value="off">Off</option>
-                    </select>
-                    <div class="focus-caption">
-                        ${this.ffmpegAvailable
-                            ? 'FFmpeg video assist is available for rolling clips and imported videos.'
-                            : 'FFmpeg video assist is not currently available in this runtime.'}
-                    </div>
-                </div>
-                <div class="focus-field">
-                    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                        <span>
-                            <div class="focus-label">Remember Imports</div>
-                            <div class="focus-caption">Automatically save imported visuals into the persistent knowledge library.</div>
-                        </span>
-                        <input
-                            type="checkbox"
-                            .checked=${Boolean(this.sessionOptions?.rememberImports)}
-                            @change=${e => this.emitSessionOptionsChange({ rememberImports: e.target.checked })}
-                        />
-                    </label>
-                </div>
-            </div>
+            <p class="shortcut-hint">Paste your OpenAI API key once. Saved keys launch straight into live mode.</p>
             <p class="description">
-                dont have an api key?
-                <span @click=${this.handleAPIKeyHelpClick} class="link">get one here</span>
+                Need an API key?
+                <span @click=${this.handleAPIKeyHelpClick} class="link">Get one from OpenAI</span>
             </p>
         `;
     }

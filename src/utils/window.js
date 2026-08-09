@@ -490,7 +490,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                 targetWidth = layoutMode === 'compact' ? 980 : 1240;
                 targetHeight = layoutMode === 'compact' ? 460 : 660;
                 break;
-            case 'onboarding':
             default:
                 targetWidth = baseWidth;
                 targetHeight = baseHeight;

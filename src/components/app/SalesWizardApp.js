@@ -5,7 +5,6 @@ import '../views/CustomizeView.js';
 import '../views/HelpView.js';
 import '../views/HistoryView.js';
 import '../views/AssistantView.js';
-import '../views/OnboardingView.js';
 import '../views/AdvancedView.js';
 import './SidePanel.js';
 
@@ -330,12 +329,6 @@ export class SalesWizardApp extends LitElement {
             }
         }
 
-        .main-content.onboarding-view {
-            padding: 0;
-            border: none;
-            background: transparent;
-        }
-
         .view-container {
             opacity: 1;
             transform: translateY(0);
@@ -412,8 +405,7 @@ export class SalesWizardApp extends LitElement {
 
     constructor() {
         super();
-        this.currentView =
-            localStorage.getItem('onboardingCompleted') || localStorage.getItem('apiKey') ? 'main' : 'onboarding';
+        this.currentView = 'main';
         this.statusText = '';
         this.startTime = null;
         this.isRecording = false;
@@ -921,20 +913,12 @@ export class SalesWizardApp extends LitElement {
         this.persistFocusConfig(launchFocusConfig);
 
         if (!hasBackendApiKey) {
-            this._autoStartRetryCount += 1;
-            if (this._autoStartRetryCount < 12) {
-                this.setStatus('Looking for saved OpenAI API key...');
-                window.setTimeout(() => {
-                    void this.autoStartIfReady();
-                }, 500);
-                return;
-            }
+            this._autoStartAttempted = true;
             this.setStatus('Enter an OpenAI API key to start live mode');
             return;
         }
 
         this._autoStartAttempted = true;
-        localStorage.setItem('onboardingCompleted', 'true');
         if (this.currentView !== 'main') {
             this.currentView = 'main';
             await this.updateComplete;
@@ -1721,11 +1705,6 @@ export class SalesWizardApp extends LitElement {
         }
     }
 
-    // Onboarding event handlers
-    handleOnboardingComplete() {
-        this.currentView = 'main';
-    }
-
     updated(changedProperties) {
         super.updated(changedProperties);
 
@@ -1776,11 +1755,6 @@ export class SalesWizardApp extends LitElement {
         const activeProfile = this.resolveActiveProfile();
         // Only re-render the view if it hasn't been cached or if critical properties changed
         switch (this.currentView) {
-            case 'onboarding':
-                return html`
-                    <onboarding-view .onComplete=${() => this.handleOnboardingComplete()} .onClose=${() => this.handleClose()}></onboarding-view>
-                `;
-
             case 'main':
                 return html`
                     <main-view
@@ -1919,9 +1893,7 @@ export class SalesWizardApp extends LitElement {
     }
 
     render() {
-        const mainContentClass = `main-content ${
-            this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border'
-        }`;
+        const mainContentClass = `main-content ${this.currentView === 'assistant' ? 'assistant-view' : 'with-border'}`;
         const windowContainerClass = `window-container ${this.layoutMode === 'side-dock' ? 'side-dock-layout' : ''} ${
             this.layoutMode === 'glass-frame' ? 'glass-frame-layout' : ''
         }`;
