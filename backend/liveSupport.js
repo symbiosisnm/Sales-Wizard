@@ -129,6 +129,12 @@ const DEFAULT_SESSION_OPTIONS = Object.freeze({
   clipWindowSeconds: 8,
 });
 
+const HP_OFFICIAL_SOURCE_POLICY = Object.freeze({
+  id: 'hp_official',
+  label: 'HP official sources only',
+  allowedHosts: ['hp.com', '*.hp.com'],
+});
+
 const WEB_INTEL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -155,6 +161,19 @@ const WEB_INTEL_SCHEMA = {
 
 function cleanText(value = '') {
   return String(value || '').replace(/\r\n/g, '\n').trim();
+}
+
+function getUrlHostname(url = '') {
+  try {
+    return new URL(String(url || '')).hostname.toLowerCase().replace(/^www\./, '');
+  } catch (_error) {
+    return '';
+  }
+}
+
+function isHpOfficialUrl(url = '') {
+  const hostname = getUrlHostname(url);
+  return hostname === 'hp.com' || hostname.endsWith('.hp.com');
 }
 
 function normalizeFocusConfig(focusConfig = {}) {
@@ -224,6 +243,34 @@ function hasProductLookupIntent(text = '') {
     /\b(official|manufacturer|store|hp|dell|lenovo|apple|microsoft|best buy|amazon|walmart|newegg|b&h)\b/.test(normalized);
 
   return (hasCommerceConstraint && hasProductTerm) || (hasBrandOrOfficial && hasProductTerm && /\b(link|url|page|find|show|get|provide)\b/.test(normalized));
+}
+
+function isHpLookupIntent(text = '') {
+  const normalized = cleanText(text).toLowerCase();
+  return (
+    /\bhp\b|hewlett[\s-]?packard|hp\.com|partsurfer|part surfer|support\.hp\.com/.test(normalized) &&
+    (hasProductLookupIntent(normalized) || hasExplicitWebLookupIntent(normalized) || /\b(part|driver|support|warranty|manual|spec|sku|model)\b/.test(normalized))
+  );
+}
+
+function getOfficialSourcePolicy({
+  focusConfig = DEFAULT_FOCUS_CONFIG,
+  turnText = '',
+  visualContextSummary = '',
+} = {}) {
+  const normalizedFocus = normalizeFocusConfig(focusConfig);
+  const policyContext = [
+    turnText,
+    visualContextSummary,
+    normalizedFocus.jobTitle,
+    normalizedFocus.objective,
+    normalizedFocus.priorityTopics,
+    normalizedFocus.webSearchHint,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return isHpLookupIntent(policyContext) ? HP_OFFICIAL_SOURCE_POLICY : null;
 }
 
 function shouldRunWebSearch(focusConfig = DEFAULT_FOCUS_CONFIG, turnText = '', { force = false } = {}) {
@@ -989,6 +1036,11 @@ function buildWebIntelRequest({
   model,
 } = {}) {
   const normalizedFocus = normalizeFocusConfig(focusConfig);
+  const sourcePolicy = getOfficialSourcePolicy({
+    focusConfig: normalizedFocus,
+    turnText,
+    visualContextSummary,
+  });
   const lines = [
     'Answer the latest user turn with fresh, current, web-grounded information.',
     'You are responsible for doing the lookup. Do not delegate lookup steps back to the user.',
@@ -1014,6 +1066,11 @@ function buildWebIntelRequest({
   }
   if (visualContextSummary && contextIsRelevantToTurn(turnText, visualContextSummary)) {
     lines.push(`Potential visual context, only if relevant: ${cleanText(visualContextSummary)}`);
+  }
+  if (sourcePolicy?.id === 'hp_official') {
+    lines.push(
+      'Mandatory source policy: HP official links only. Use site:hp.com and only return URLs whose hostname is hp.com or a subdomain of hp.com, including support.hp.com and partsurfer.hp.com.'
+    );
   }
   if (retrievedFocusSnippets.length) {
     const relevantSnippets = retrievedFocusSnippets.filter(snippet => contextIsRelevantToTurn(turnText, snippet?.text || ''));
@@ -1047,11 +1104,14 @@ function buildWebIntelRequest({
       'For product lookups, the summary must name concrete matching candidates or say no exact match was found after searching; include direct product/category URLs in sources.',
       'Do not call a category, filtered listing, search result, or collection page an exact product link. Only direct product detail pages count as exact product links.',
       'If the first result is a category/listing page but reveals a product name or SKU, search again for that product name/SKU and return the direct product page if available.',
+      sourcePolicy?.id === 'hp_official'
+        ? 'Mandatory source policy: only cite and return hp.com subdomains. Allowed examples include www.hp.com, support.hp.com, and partsurfer.hp.com. Do not cite retailers, forums, search engines, review sites, or non-HP domains.'
+        : '',
       'Set should_search to true when web results were used.',
       'Write summary as the direct user-facing answer in 2 to 8 concise sentences.',
       'Do not say you cannot browse, search, or access the internet.',
       'Return only sources that were actually useful to the answer.',
-    ].join('\n'),
+    ].filter(Boolean).join('\n'),
     input: [
       {
         role: 'user',
@@ -1089,9 +1149,14 @@ module.exports = {
   buildWebIntelRequest,
   chunkReferenceText,
   extractJsonObject,
+  getOfficialSourcePolicy,
+  getUrlHostname,
   hasExplicitWebLookupIntent,
   hasFocusConfig,
   hasProductLookupIntent,
+  HP_OFFICIAL_SOURCE_POLICY,
+  isHpLookupIntent,
+  isHpOfficialUrl,
   normalizeFocusConfig,
   normalizeSessionOptions,
   normalizeHelpCardPayload,

@@ -1186,6 +1186,34 @@ export class SidePanel extends LitElement {
         window.open(url, '_blank', 'noopener,noreferrer');
     }
 
+    _isHpOfficialSourcePolicy(sourcePolicy) {
+        return sourcePolicy?.id === 'hp_official';
+    }
+
+    _isHpOfficialUrl(url = '') {
+        try {
+            const hostname = new URL(String(url || '')).hostname.toLowerCase().replace(/^www\./, '');
+            return hostname === 'hp.com' || hostname.endsWith('.hp.com');
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    _isAllowedBySourcePolicy(url = '', sourcePolicy = null) {
+        if (!this._isHpOfficialSourcePolicy(sourcePolicy)) {
+            return true;
+        }
+        return this._isHpOfficialUrl(url);
+    }
+
+    _getActiveSourcePolicy() {
+        return this.webIntel?.source_policy || null;
+    }
+
+    _filterLinksBySourcePolicy(items = [], sourcePolicy = this._getActiveSourcePolicy()) {
+        return (Array.isArray(items) ? items : []).filter(item => this._isAllowedBySourcePolicy(item?.url || item?.sourceUrl || '', sourcePolicy));
+    }
+
     formatResourceHost(url) {
         try {
             return new URL(url).hostname.replace(/^www\./, '');
@@ -1454,18 +1482,19 @@ export class SidePanel extends LitElement {
         if (!this.webIntel?.summary) {
             return null;
         }
+        const sources = this._filterLinksBySourcePolicy(this.webIntel.sources || [], this.webIntel.source_policy);
 
         return html`
             <article class="visual-card" style="margin-bottom: 12px;">
                 <div class="visual-header">
                     <div class="visual-title">Web Intel</div>
-                    <div class="visual-meta">${this.webIntel.sources?.length || 0} source${this.webIntel.sources?.length === 1 ? '' : 's'}</div>
+                    <div class="visual-meta">${sources.length} source${sources.length === 1 ? '' : 's'}</div>
                 </div>
                 <div class="visual-summary">${this.webIntel.summary}</div>
-                ${this.webIntel.sources?.length
+                ${sources.length
                     ? html`
                           <div class="resource-grid">
-                              ${this.webIntel.sources.map(
+                              ${sources.map(
                                   source => html`
                                       <a
                                           class="resource-link"
@@ -1489,7 +1518,7 @@ export class SidePanel extends LitElement {
     }
 
     renderResourceTiles() {
-        const resources = Array.isArray(this.helpResources) ? this.helpResources : [];
+        const resources = this._filterLinksBySourcePolicy(this.helpResources);
         if (!resources.length) {
             return null;
         }

@@ -901,6 +901,58 @@ export class SalesWizardApp extends LitElement {
         };
     }
 
+    isHpOfficialSourcePolicy(sourcePolicy) {
+        return sourcePolicy?.id === 'hp_official';
+    }
+
+    isHpOfficialUrl(url = '') {
+        try {
+            const hostname = new URL(String(url || '')).hostname.toLowerCase().replace(/^www\./, '');
+            return hostname === 'hp.com' || hostname.endsWith('.hp.com');
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    filterLinksBySourcePolicy(items = [], sourcePolicy = null) {
+        if (!this.isHpOfficialSourcePolicy(sourcePolicy)) {
+            return Array.isArray(items) ? items : [];
+        }
+        return (Array.isArray(items) ? items : []).filter(item => this.isHpOfficialUrl(item?.url || item?.sourceUrl || ''));
+    }
+
+    sanitizeTextLinksBySourcePolicy(text = '', sourcePolicy = null) {
+        const value = String(text || '');
+        if (!this.isHpOfficialSourcePolicy(sourcePolicy)) {
+            return value;
+        }
+        return value.replace(/https?:\/\/[^\s)]+/gi, url => (this.isHpOfficialUrl(url) ? url : '[non-HP link hidden]'));
+    }
+
+    sanitizeHelpCardsBySourcePolicy(cards = [], sourcePolicy = null) {
+        return (Array.isArray(cards) ? cards : []).map(card => ({
+            ...card,
+            speak_now: this.sanitizeTextLinksBySourcePolicy(card?.speak_now || '', sourcePolicy),
+            supporting_points: Array.isArray(card?.supporting_points)
+                ? card.supporting_points.map(point => this.sanitizeTextLinksBySourcePolicy(point, sourcePolicy))
+                : [],
+            source_context: this.sanitizeTextLinksBySourcePolicy(card?.source_context || '', sourcePolicy),
+        }));
+    }
+
+    sanitizeWebIntelBySourcePolicy(webIntel = null, sourcePolicy = null) {
+        if (!webIntel) {
+            return null;
+        }
+        const activePolicy = sourcePolicy || webIntel.source_policy || null;
+        return {
+            ...webIntel,
+            source_policy: activePolicy,
+            summary: this.sanitizeTextLinksBySourcePolicy(webIntel.summary || '', activePolicy),
+            sources: this.filterLinksBySourcePolicy(webIntel.sources || [], activePolicy),
+        };
+    }
+
     async autoStartIfReady() {
         if (this._autoStartAttempted || this.sessionActive || this._stopLiveStreaming) {
             return;
@@ -1378,16 +1430,20 @@ export class SalesWizardApp extends LitElement {
                     this.requestUpdate();
                 },
                 onHelpCards: payload => {
-                    this.helpCards = Array.isArray(payload?.cards) ? payload.cards.slice(0, 5) : [];
-                    this.primaryHelpAnswer = payload?.primary_answer || '';
-                    this.helpResources = Array.isArray(payload?.resources) ? payload.resources : [];
+                    const sourcePolicy = payload?.source_policy || payload?.web_intel?.source_policy || null;
+                    this.helpCards = this.sanitizeHelpCardsBySourcePolicy(
+                        Array.isArray(payload?.cards) ? payload.cards.slice(0, 5) : [],
+                        sourcePolicy
+                    );
+                    this.primaryHelpAnswer = this.sanitizeTextLinksBySourcePolicy(payload?.primary_answer || '', sourcePolicy);
+                    this.helpResources = this.filterLinksBySourcePolicy(payload?.resources || [], sourcePolicy);
                     this.visualMatches = Array.isArray(payload?.visual_matches) ? payload.visual_matches : [];
                     this.matchedKnowledge = Array.isArray(payload?.matched_knowledge) ? payload.matched_knowledge : [];
                     if (payload?.retrieval) {
                         this.focusRetrieval = payload.retrieval;
                     }
                     if (payload?.web_intel) {
-                        this.webIntel = payload.web_intel;
+                        this.webIntel = this.sanitizeWebIntelBySourcePolicy(payload.web_intel, sourcePolicy);
                     }
                     if (payload?.should_surface) {
                         this.assistantPanelTab = 'help';

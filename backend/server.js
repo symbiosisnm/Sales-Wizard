@@ -27,12 +27,14 @@ const {
   buildSessionInstruction,
   buildWebIntelRequest,
   extractJsonObject,
+  getOfficialSourcePolicy,
   normalizeFocusConfig,
   normalizeHelpCardPayload,
   normalizeSessionOptions,
   normalizeWebIntelPayload,
   retrieveFocusSnippets,
   hasProductLookupIntent,
+  isHpOfficialUrl,
   shouldAnswerWithWebFirst,
   shouldRunWebSearch,
 } = require('./liveSupport');
@@ -435,6 +437,7 @@ wss.on('connection', ws => {
   };
   let lastWebIntel = {
     should_search: false,
+    source_policy: null,
     summary: '',
     sources: [],
     turnHash: '',
@@ -571,6 +574,7 @@ wss.on('connection', ws => {
     currentSessionOptions = { ...DEFAULT_SESSION_OPTIONS };
     lastWebIntel = {
       should_search: false,
+      source_policy: null,
       summary: '',
       sources: [],
       turnHash: '',
@@ -733,11 +737,19 @@ wss.on('connection', ws => {
   const collectResourceTiles = ({ matchedKnowledgeItems = [], webIntel = null }) => {
     const resources = [];
     const seen = new Set();
+    const sourcePolicy = webIntel?.source_policy || null;
+
+    const isAllowedResourceUrl = url => {
+      if (sourcePolicy?.id !== 'hp_official') {
+        return true;
+      }
+      return isHpOfficialUrl(url);
+    };
 
     const pushResource = resource => {
       const title = String(resource?.title || '').trim();
       const url = String(resource?.url || '').trim();
-      if (!title || !url) {
+      if (!title || !url || !isAllowedResourceUrl(url)) {
         return;
       }
       const key = `${title}::${url}`;
@@ -895,6 +907,7 @@ wss.on('connection', ws => {
     const webIntel =
       lastWebIntel?.turnHash === turnHash
         ? {
+            source_policy: lastWebIntel.source_policy || null,
             summary: lastWebIntel.summary,
             sources: lastWebIntel.sources,
           }
@@ -1023,6 +1036,44 @@ wss.on('connection', ws => {
     return `I found live web results for: ${String(turnText || '').trim()}. Use these sources directly instead of asking the user to search: ${sourceText}`;
   };
 
+  const isSourceAllowedByPolicy = (source, sourcePolicy = null) => {
+    if (sourcePolicy?.id !== 'hp_official') {
+      return true;
+    }
+    return isHpOfficialUrl(source?.url || '');
+  };
+
+  const sanitizeSummaryForSourcePolicy = (summary = '', sourcePolicy = null) => {
+    if (sourcePolicy?.id !== 'hp_official') {
+      return String(summary || '').trim();
+    }
+
+    return String(summary || '')
+      .replace(/https?:\/\/[^\s)]+/gi, url => (isHpOfficialUrl(url) ? url : '[non-HP link removed]'))
+      .trim();
+  };
+
+  const sanitizeHelpPayloadForSourcePolicy = (payload = {}, sourcePolicy = null) => {
+    if (sourcePolicy?.id !== 'hp_official') {
+      return payload;
+    }
+
+    return {
+      ...payload,
+      primary_answer: sanitizeSummaryForSourcePolicy(payload.primary_answer, sourcePolicy),
+      cards: Array.isArray(payload.cards)
+        ? payload.cards.map(card => ({
+            ...card,
+            speak_now: sanitizeSummaryForSourcePolicy(card.speak_now, sourcePolicy),
+            supporting_points: Array.isArray(card.supporting_points)
+              ? card.supporting_points.map(point => sanitizeSummaryForSourcePolicy(point, sourcePolicy))
+              : [],
+            source_context: sanitizeSummaryForSourcePolicy(card.source_context, sourcePolicy),
+          }))
+        : [],
+    };
+  };
+
   const isListingOrSearchSource = source => {
     const text = `${source?.title || ''} ${source?.url || ''}`.toLowerCase();
     return /\b(search|results|category|categories|collection|collections|filtered|filter|shop all|laptops)\b/.test(text) ||
@@ -1089,7 +1140,7 @@ wss.on('connection', ws => {
     });
   };
 
-  const normalizeWebIntelResponse = (payload, turnText) => {
+  const normalizeWebIntelResponse = (payload, turnText, sourcePolicy = null) => {
     const parsed = payload?.output_parsed || extractJsonObject(extractResponseText(payload));
     const normalized = normalizeWebIntelPayload(parsed);
     const toolSources = extractWebSearchSources(payload);
@@ -1102,13 +1153,20 @@ wss.on('connection', ws => {
         mergedSources.push(source);
       }
     }
-    const sources = mergedSources.slice(0, 5);
+    const sources = mergedSources
+      .filter(source => isSourceAllowedByPolicy(source, sourcePolicy))
+      .slice(0, 5);
     const summary = isDelegatedLookupAnswer(normalized.summary)
       ? buildSourceBackedWebSummary(turnText, sources)
-      : normalized.summary;
+      : sanitizeSummaryForSourcePolicy(normalized.summary, sourcePolicy);
+    const policySummary =
+      sourcePolicy?.id === 'hp_official' && !sources.length
+        ? 'I searched live sources but did not find a verified HP official hp.com, support.hp.com, or partsurfer.hp.com link to surface. I will not return non-HP links for this HP lookup.'
+        : summary;
     return {
       ...normalized,
-      summary,
+      source_policy: sourcePolicy,
+      summary: policySummary,
       sources,
       turnHash: buildHelpPackHash(turnText),
     };
@@ -1128,6 +1186,11 @@ wss.on('connection', ws => {
 
     sendStatus(responsePendingOrActive ? 'Updating web help...' : 'Searching web...');
     const retrieval = await buildRetrievalBase(turnText);
+    const sourcePolicy = getOfficialSourcePolicy({
+      focusConfig: normalizedFocus,
+      turnText,
+      visualContextSummary: retrieval.visualSummary,
+    });
     const requestBody = buildWebIntelRequest({
       focusConfig: normalizedFocus,
       retrievedFocusSnippets: retrieval.snippets,
@@ -1138,7 +1201,7 @@ wss.on('connection', ws => {
     });
 
     const payload = await postWebSearchRequest(requestBody);
-    let nextWebIntel = normalizeWebIntelResponse(payload, turnText);
+    let nextWebIntel = normalizeWebIntelResponse(payload, turnText, sourcePolicy);
 
     if (shouldRefineProductLookup(turnText, nextWebIntel)) {
       sendStatus('Refining product link...');
@@ -1155,6 +1218,9 @@ wss.on('connection', ws => {
             'Refine the result. Find direct product detail page URLs, not category, filtered listing, search result, or collection URLs.',
             'If a prior result revealed a product name, model number, or SKU, search that exact identifier now.',
             'Do not call a listing/category URL an exact product link. If no direct product page is found, say that plainly.',
+            sourcePolicy?.id === 'hp_official'
+              ? 'Mandatory: only return URLs on hp.com subdomains such as www.hp.com, support.hp.com, or partsurfer.hp.com. Do not return retailer, review, forum, or search-engine URLs.'
+              : '',
             nextWebIntel.summary ? `Prior summary: ${nextWebIntel.summary}` : '',
             priorSources ? `Prior sources:\n${priorSources}` : '',
           ]
@@ -1164,7 +1230,7 @@ wss.on('connection', ws => {
           model: currentWebSearchModel,
         })
       );
-      const refinedWebIntel = normalizeWebIntelResponse(refinedPayload, turnText);
+      const refinedWebIntel = normalizeWebIntelResponse(refinedPayload, turnText, sourcePolicy);
       if (refinedWebIntel.summary || refinedWebIntel.sources.length) {
         nextWebIntel = refinedWebIntel;
       }
@@ -1281,8 +1347,13 @@ wss.on('connection', ws => {
         hasVisual: Boolean(activeVisualContext?.previewDataUrl),
         preferVisual,
       });
+      const sanitizedHelpPayload = sanitizeHelpPayloadForSourcePolicy(
+        helpPayload,
+        retrieval.webIntel?.source_policy
+      );
       return {
-        ...helpPayload,
+        ...sanitizedHelpPayload,
+        source_policy: retrieval.webIntel?.source_policy || null,
         resources: retrieval.resources,
         visual_matches: retrieval.visualMatches,
         retrieval_sources: retrieval.retrieval_sources,
@@ -1310,8 +1381,13 @@ wss.on('connection', ws => {
         hasVisual: Boolean(activeVisualContext?.previewDataUrl),
         preferVisual,
       });
+      const sanitizedHelpPayload = sanitizeHelpPayloadForSourcePolicy(
+        helpPayload,
+        retrieval.webIntel?.source_policy
+      );
       return {
-        ...helpPayload,
+        ...sanitizedHelpPayload,
+        source_policy: retrieval.webIntel?.source_policy || null,
         resources: retrieval.resources,
         visual_matches: retrieval.visualMatches,
         retrieval_sources: retrieval.retrieval_sources,

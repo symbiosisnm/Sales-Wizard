@@ -8,8 +8,11 @@ const {
   buildSessionInstruction,
   buildWebIntelRequest,
   contextIsRelevantToTurn,
+  getOfficialSourcePolicy,
   hasExplicitWebLookupIntent,
   hasProductLookupIntent,
+  isHpLookupIntent,
+  isHpOfficialUrl,
   normalizeFocusConfig,
   normalizeHelpCardPayload,
   retrieveFocusSnippets,
@@ -185,6 +188,26 @@ test('product and exact-link lookups use grounded web first', () => {
   assert.strictEqual(hasProductLookupIntent(turn), true);
   assert.strictEqual(shouldRunWebSearch(focusConfig, turn), true);
   assert.strictEqual(shouldAnswerWithWebFirst(focusConfig, turn), true);
+});
+
+test('HP lookups enforce official hp.com source policy', () => {
+  const turn =
+    'Find the exact HP US Store product link for a 32 GB RAM laptop under $1,500.';
+  const sourcePolicy = getOfficialSourcePolicy({ turnText: turn });
+  const request = buildWebIntelRequest({
+    focusConfig: normalizeFocusConfig({ webSearchEnabled: true }),
+    turnText: turn,
+    model: 'gpt-5.4-mini',
+  });
+
+  assert.strictEqual(isHpLookupIntent(turn), true);
+  assert.strictEqual(sourcePolicy.id, 'hp_official');
+  assert.strictEqual(isHpOfficialUrl('https://www.hp.com/us-en/shop/pdp/example'), true);
+  assert.strictEqual(isHpOfficialUrl('https://support.hp.com/us-en/document/example'), true);
+  assert.strictEqual(isHpOfficialUrl('https://partsurfer.hp.com/Search.aspx'), true);
+  assert.strictEqual(isHpOfficialUrl('https://bestbuy.com/site/example'), false);
+  assert.match(request.instructions, /only cite and return hp\.com subdomains/i);
+  assert.match(request.input[0].content[0].text, /Use site:hp\.com/i);
 });
 
 test('buildWebIntelRequest includes the web search tool and current focus context', () => {

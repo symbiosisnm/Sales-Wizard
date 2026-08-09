@@ -19,3 +19,14 @@ test('first launch uses the API-key gate instead of onboarding', () => {
   assert.match(mainViewSource, /Enter your OpenAI API key/);
   assert.doesNotMatch(mainViewSource, /What Should I Focus On\?/);
 });
+
+test('renderer filters HP-scoped help links before display', () => {
+  const appSource = readSource('src/components/app/SalesWizardApp.js');
+  const sidePanelSource = readSource('src/components/app/SidePanel.js');
+
+  assert.match(appSource, /isHpOfficialUrl/);
+  assert.match(appSource, /filterLinksBySourcePolicy/);
+  assert.match(appSource, /sanitizeTextLinksBySourcePolicy/);
+  assert.match(sidePanelSource, /_isHpOfficialUrl/);
+  assert.match(sidePanelSource, /_filterLinksBySourcePolicy/);
+});
