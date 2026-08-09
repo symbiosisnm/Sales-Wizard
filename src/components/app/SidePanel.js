@@ -832,6 +832,275 @@ export class SidePanel extends LitElement {
             border-radius: 999px;
             font-size: 11px;
         }
+
+        :host-context(.glass-frame-layout) {
+            width: 100%;
+            min-width: 0;
+            background: transparent;
+            border-left: 0;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
+        :host-context(.glass-frame-layout) .panel-shell {
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 28px;
+            background:
+                radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 30%),
+                radial-gradient(circle at bottom left, rgba(20, 184, 166, 0.1), transparent 34%),
+                linear-gradient(160deg, rgba(5, 12, 22, 0.58), rgba(5, 12, 22, 0.24));
+            box-shadow:
+                0 24px 80px rgba(0, 0, 0, 0.28),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(26px) saturate(160%);
+            -webkit-backdrop-filter: blur(26px) saturate(160%);
+        }
+
+        :host-context(.glass-frame-layout) .topbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 8px;
+            padding: 12px 12px 0;
+        }
+
+        :host-context(.glass-frame-layout) .source-chip {
+            width: fit-content;
+            padding: 6px 10px;
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        :host-context(.glass-frame-layout) .visual-actions {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 7px;
+        }
+
+        :host-context(.glass-frame-layout) .ghost-button,
+        :host-context(.glass-frame-layout) .clear-button,
+        :host-context(.glass-frame-layout) .save-button {
+            padding: 8px 11px;
+            border-radius: 999px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.055);
+        }
+
+        :host-context(.glass-frame-layout) .tabs {
+            display: flex;
+            gap: 7px;
+            overflow-x: auto;
+            padding: 9px 12px 0;
+            scrollbar-width: none;
+        }
+
+        :host-context(.glass-frame-layout) .tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        :host-context(.glass-frame-layout) .tab-button {
+            flex: 0 0 auto;
+            padding: 8px 11px;
+            border-radius: 999px;
+            font-size: 11px;
+            letter-spacing: 0.01em;
+            background: rgba(255, 255, 255, 0.045);
+        }
+
+        :host-context(.glass-frame-layout) .tab-button.active {
+            background: linear-gradient(135deg, rgba(14, 116, 144, 0.54), rgba(37, 99, 235, 0.24));
+            border-color: rgba(125, 211, 252, 0.45);
+        }
+
+        :host-context(.glass-frame-layout) .panel-body {
+            padding: 11px 12px 12px;
+        }
+
+        :host-context(.glass-frame-layout) .help-list,
+        :host-context(.glass-frame-layout) .transcripts,
+        :host-context(.glass-frame-layout) .focus-form,
+        :host-context(.glass-frame-layout) .knowledge-list,
+        :host-context(.glass-frame-layout) .retrieval-list {
+            gap: 9px;
+        }
+
+        :host-context(.glass-frame-layout) .empty-state,
+        :host-context(.glass-frame-layout) .visual-card,
+        :host-context(.glass-frame-layout) .help-card,
+        :host-context(.glass-frame-layout) .transcript-item,
+        :host-context(.glass-frame-layout) .resource-link,
+        :host-context(.glass-frame-layout) .knowledge-item,
+        :host-context(.glass-frame-layout) .retrieval-item,
+        :host-context(.glass-frame-layout) .focus-toggle {
+            border-radius: 18px;
+            border-color: rgba(255, 255, 255, 0.1);
+            background:
+                linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025)),
+                rgba(2, 6, 23, 0.16);
+            box-shadow:
+                0 14px 38px rgba(0, 0, 0, 0.14),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        :host-context(.glass-frame-layout) .empty-state,
+        :host-context(.glass-frame-layout) .help-card,
+        :host-context(.glass-frame-layout) .visual-card,
+        :host-context(.glass-frame-layout) .transcript-item {
+            padding: 13px;
+        }
+
+        :host-context(.glass-frame-layout) .primary-answer-card {
+            margin-bottom: 9px;
+            border-color: rgba(125, 211, 252, 0.22);
+            background: linear-gradient(180deg, rgba(14, 45, 78, 0.38), rgba(255, 255, 255, 0.035));
+        }
+
+        :host-context(.glass-frame-layout) .card-header,
+        :host-context(.glass-frame-layout) .visual-header {
+            gap: 9px;
+            margin-bottom: 8px;
+        }
+
+        :host-context(.glass-frame-layout) .card-title,
+        :host-context(.glass-frame-layout) .visual-title {
+            font-size: 13px;
+            line-height: 1.25;
+        }
+
+        :host-context(.glass-frame-layout) .card-meta,
+        :host-context(.glass-frame-layout) .visual-meta,
+        :host-context(.glass-frame-layout) .mini-label,
+        :host-context(.glass-frame-layout) .focus-label,
+        :host-context(.glass-frame-layout) .speak-now-label {
+            font-size: 9px;
+        }
+
+        :host-context(.glass-frame-layout) .speak-now,
+        :host-context(.glass-frame-layout) .transcription,
+        :host-context(.glass-frame-layout) .ai-response,
+        :host-context(.glass-frame-layout) .visual-summary,
+        :host-context(.glass-frame-layout) .focus-summary,
+        :host-context(.glass-frame-layout) .knowledge-summary {
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        :host-context(.glass-frame-layout) .supporting-points {
+            gap: 4px;
+            margin: 8px 0;
+        }
+
+        :host-context(.glass-frame-layout) .supporting-point {
+            font-size: 11px;
+            line-height: 1.38;
+        }
+
+        :host-context(.glass-frame-layout) .resource-grid {
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin: 9px 0 0;
+        }
+
+        :host-context(.glass-frame-layout) .resource-link {
+            gap: 5px;
+            padding: 11px;
+        }
+
+        :host-context(.glass-frame-layout) .resource-link-title {
+            font-size: 12px;
+        }
+
+        :host-context(.glass-frame-layout) .resource-link-host {
+            font-size: 10px;
+        }
+
+        :host-context(.glass-frame-layout) .context-overview {
+            grid-template-columns: 92px minmax(0, 1fr);
+            gap: 11px;
+            margin-bottom: 9px;
+        }
+
+        :host-context(.glass-frame-layout) .context-overview img {
+            width: 92px;
+            height: 76px;
+            border-radius: 14px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+        }
+
+        :host-context(.glass-frame-layout) .context-pill {
+            padding: 4px 8px;
+            font-size: 9px;
+        }
+
+        :host-context(.glass-frame-layout) .preview-frame,
+        :host-context(.glass-frame-layout) .visual-preview,
+        :host-context(.glass-frame-layout) .frame-grid,
+        :host-context(.glass-frame-layout) .context-frame-strip {
+            margin-top: 9px;
+        }
+
+        :host-context(.glass-frame-layout) .frame-grid {
+            gap: 7px;
+        }
+
+        :host-context(.glass-frame-layout) .frame-grid img,
+        :host-context(.glass-frame-layout) .visual-preview img,
+        :host-context(.glass-frame-layout) .preview-frame img {
+            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+        }
+
+        :host-context(.glass-frame-layout) .context-frame-strip img {
+            height: 54px;
+            border-radius: 11px;
+        }
+
+        :host-context(.glass-frame-layout) .focus-field {
+            gap: 5px;
+        }
+
+        :host-context(.glass-frame-layout) .focus-input,
+        :host-context(.glass-frame-layout) .focus-textarea {
+            border-radius: 14px;
+            padding: 9px 10px;
+            font-size: 12px;
+        }
+
+        :host-context(.glass-frame-layout) .focus-textarea {
+            min-height: 90px;
+        }
+
+        :host-context(.glass-frame-layout) .focus-toggle {
+            padding: 10px;
+        }
+
+        :host-context(.glass-frame-layout) .notes {
+            padding: 9px 12px 12px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(3, 9, 16, 0.22));
+        }
+
+        :host-context(.glass-frame-layout) textarea {
+            height: 52px;
+            min-height: 52px;
+            max-height: 80px;
+            padding: 8px 10px;
+            border-radius: 16px;
+            resize: vertical;
+            font-size: 12px;
+            line-height: 1.4;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        :host-context(.glass-frame-layout) .notes-actions {
+            margin-top: 8px;
+            gap: 7px;
+        }
+
+        :host-context(.glass-frame-layout) .format-select {
+            padding: 7px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+        }
     `;
 
     static properties = {

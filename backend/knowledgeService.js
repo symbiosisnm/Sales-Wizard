@@ -199,6 +199,19 @@ async function fileToDataUrl(filePath, mimeType) {
   return `data:${mimeType};base64,${buffer.toString('base64')}`;
 }
 
+async function filterExistingFiles(filePaths = []) {
+  const existing = [];
+  for (const filePath of filePaths.filter(Boolean)) {
+    try {
+      await fs.access(filePath);
+      existing.push(filePath);
+    } catch (_error) {
+      // Live clip extraction can skip a frame near the end of a very short clip.
+    }
+  }
+  return existing;
+}
+
 async function tryOcrImage(filePath) {
   try {
     const result = await Promise.race([
@@ -501,17 +514,20 @@ async function ingestClipFrames({
       maxFrames: Math.min(6, frames.length),
       prefix: 'clip',
     });
+    const extractedFramePaths = await filterExistingFiles(extracted.framePaths);
 
-    const imageDataUrls = await Promise.all(
-      extracted.framePaths.map(framePath => fileToDataUrl(framePath, 'image/jpeg'))
-    );
+    const imageDataUrls = extractedFramePaths.length
+      ? await Promise.all(extractedFramePaths.map(framePath => fileToDataUrl(framePath, 'image/jpeg')))
+      : frames.slice(0, 6);
     const summary = await summarizeImages(apiKey, {
       title: cleanText(title || 'Rolling live clip'),
       images: imageDataUrls,
       sourceContext: 'Rolling live screen clip',
     });
     const embedding = await createEmbedding(apiKey, `${title}\n${summary}`);
-    const derivedAssets = await persistExtractedFrames(itemId, extracted.framePaths);
+    const derivedAssets = extractedFramePaths.length
+      ? await persistExtractedFrames(itemId, extractedFramePaths)
+      : [];
     const item = upsertKnowledgeItem({
       id: itemId,
       kind: 'clip',

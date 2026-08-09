@@ -403,6 +403,102 @@ export class AssistantView extends LitElement {
             min-width: auto;
             font-size: 10px;
         }
+
+        :host-context(.glass-frame-layout) .response-container {
+            flex: 1;
+            min-height: 0;
+            height: auto;
+            border-radius: 24px;
+            padding: 16px 18px;
+            font-size: 14px;
+            line-height: 1.45;
+            background:
+                radial-gradient(circle at top left, rgba(125, 211, 252, 0.14), transparent 32%),
+                linear-gradient(145deg, rgba(5, 12, 22, 0.58), rgba(5, 12, 22, 0.25));
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow:
+                0 22px 72px rgba(0, 0, 0, 0.26),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(24px) saturate(155%);
+            -webkit-backdrop-filter: blur(24px) saturate(155%);
+        }
+
+        :host-context(.glass-frame-layout) .response-container p {
+            margin: 0.55em 0;
+        }
+
+        :host-context(.glass-frame-layout) .response-container h1,
+        :host-context(.glass-frame-layout) .response-container h2,
+        :host-context(.glass-frame-layout) .response-container h3,
+        :host-context(.glass-frame-layout) .response-container h4,
+        :host-context(.glass-frame-layout) .response-container h5,
+        :host-context(.glass-frame-layout) .response-container h6 {
+            margin: 0.8em 0 0.35em;
+            line-height: 1.2;
+        }
+
+        :host-context(.glass-frame-layout) .response-container h1 {
+            font-size: 1.35em;
+        }
+
+        :host-context(.glass-frame-layout) .response-container h2 {
+            font-size: 1.22em;
+        }
+
+        :host-context(.glass-frame-layout) .response-container h3 {
+            font-size: 1.08em;
+        }
+
+        :host-context(.glass-frame-layout) .response-container ul,
+        :host-context(.glass-frame-layout) .response-container ol {
+            margin: 0.55em 0;
+            padding-left: 1.35em;
+        }
+
+        :host-context(.glass-frame-layout) .response-container li {
+            margin: 0.25em 0;
+        }
+
+        :host-context(.glass-frame-layout) .text-input-container {
+            gap: 7px;
+            margin-top: 8px;
+            padding: 7px;
+            border-radius: 999px;
+            background: rgba(5, 12, 22, 0.38);
+            border-color: rgba(255, 255, 255, 0.12);
+            box-shadow:
+                0 14px 40px rgba(0, 0, 0, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px) saturate(145%);
+            -webkit-backdrop-filter: blur(20px) saturate(145%);
+        }
+
+        :host-context(.glass-frame-layout) .text-input-container input {
+            min-width: 0;
+            padding: 9px 11px;
+            border-radius: 999px;
+            font-size: 12px;
+        }
+
+        :host-context(.glass-frame-layout) .nav-button,
+        :host-context(.glass-frame-layout) .save-button {
+            width: 31px;
+            height: 31px;
+            flex: 0 0 31px;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        :host-context(.glass-frame-layout) .nav-button svg,
+        :host-context(.glass-frame-layout) .save-button svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        :host-context(.glass-frame-layout) .response-counter {
+            min-width: auto;
+            font-size: 10px;
+        }
     `;
 
     static properties = {

@@ -8,6 +8,7 @@ const api = {
   secureSetApiKey: value => ipcRenderer.invoke('secure-set-api-key', value),
   quitApplication: () => ipcRenderer.invoke('quit-application'),
   toggleWindowVisibility: () => ipcRenderer.invoke('toggle-window-visibility'),
+  setMouseEventsIgnored: ignored => ipcRenderer.invoke('set-mouse-events-ignored', ignored),
   openExternal: url => ipcRenderer.invoke('open-external', url),
   viewChanged: view => ipcRenderer.send('view-changed', view),
   updateKeybinds: keybinds => ipcRenderer.send('update-keybinds', keybinds),

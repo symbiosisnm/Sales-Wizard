@@ -498,7 +498,7 @@ export class MainView extends LitElement {
             </div>
             <div class="focus-stack">
                 <div class="focus-title">What Should I Focus On?</div>
-                <div class="focus-caption">Optional. If left blank, the overlay launches as an HP sales/support assistant with live web search enabled.</div>
+                <div class="focus-caption">Optional. If left blank, the overlay launches as a general live task assistant with live web search enabled.</div>
                 <div class="focus-field">
                     <div class="focus-label">Role / Purpose</div>
                     <input

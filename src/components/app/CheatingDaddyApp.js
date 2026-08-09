@@ -105,10 +105,20 @@ export class CheatingDaddyApp extends LitElement {
                 inset 0 1px 0 rgba(255, 255, 255, 0.06);
         }
 
+        .window-container.glass-frame-layout {
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
         .container {
             display: flex;
             flex-direction: column;
             height: 100%;
+        }
+
+        .glass-frame-layout .container {
+            position: relative;
         }
 
         .main-content {
@@ -145,6 +155,20 @@ export class CheatingDaddyApp extends LitElement {
             -webkit-backdrop-filter: blur(20px) saturate(145%);
         }
 
+        .glass-frame-layout .main-content.assistant-view {
+            position: absolute;
+            inset: 0;
+            margin-top: 0;
+            padding: 0;
+            overflow: visible;
+            background: transparent;
+            box-shadow: none;
+            border: 0;
+            pointer-events: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
         .assistant-container {
             display: flex;
             height: 100%;
@@ -171,6 +195,73 @@ export class CheatingDaddyApp extends LitElement {
             min-height: 0;
             min-width: 0;
             width: 100%;
+        }
+
+        .glass-frame-layout app-header {
+            position: absolute;
+            top: 16px;
+            left: 18px;
+            z-index: 5;
+            width: min(430px, 31vw);
+            pointer-events: auto;
+        }
+
+        .glass-frame-layout .view-container,
+        .glass-frame-layout .assistant-container {
+            height: 100%;
+            overflow: visible;
+            pointer-events: none;
+        }
+
+        .glass-frame-layout .assistant-container::before {
+            content: '';
+            position: absolute;
+            top: 16px;
+            right: min(462px, 31vw);
+            bottom: 18px;
+            left: min(476px, 33vw);
+            border-radius: 34px;
+            pointer-events: none;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        .glass-frame-layout .assistant-container assistant-view {
+            position: absolute;
+            left: 18px;
+            top: 74px;
+            z-index: 4;
+            width: min(430px, 31vw);
+            height: clamp(190px, 24vh, 280px);
+            pointer-events: auto;
+        }
+
+        .glass-frame-layout .assistant-container side-panel {
+            position: absolute;
+            top: 16px;
+            right: 18px;
+            bottom: 18px;
+            z-index: 4;
+            width: min(430px, 30vw);
+            min-width: 390px;
+            pointer-events: auto;
+        }
+
+        @media (max-width: 1180px) {
+            .glass-frame-layout app-header,
+            .glass-frame-layout .assistant-container assistant-view {
+                width: 360px;
+            }
+
+            .glass-frame-layout .assistant-container side-panel {
+                width: 360px;
+                min-width: 340px;
+            }
+
+            .glass-frame-layout .assistant-container::before {
+                left: 394px;
+                right: 394px;
+            }
         }
 
         .main-content.onboarding-view {
@@ -313,6 +404,20 @@ export class CheatingDaddyApp extends LitElement {
         this._focusSyncTimer = null;
         this._autoStartAttempted = false;
         this._autoStartRetryCount = 0;
+        this._lastPointerPassThrough = null;
+        this._lastPointerPoint = { x: -1, y: -1 };
+        this._pointerUpdateFrame = null;
+        this._panelInputFocused = false;
+        this._handlePerimeterMouseMove = e => this.handlePerimeterMouseMove(e);
+        this._handlePerimeterMouseLeave = () => this.updatePerimeterPointerMode(true);
+        this._handlePerimeterFocusIn = () => {
+            this._panelInputFocused = true;
+            void this.setPointerPassThrough(false);
+        };
+        this._handlePerimeterFocusOut = () => {
+            this._panelInputFocused = false;
+            this.queuePerimeterPointerUpdate();
+        };
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -338,6 +443,11 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         void this.loadKnowledgeItems();
+        window.addEventListener('mousemove', this._handlePerimeterMouseMove, { passive: true });
+        window.addEventListener('mouseleave', this._handlePerimeterMouseLeave, { passive: true });
+        this.addEventListener('focusin', this._handlePerimeterFocusIn);
+        this.addEventListener('focusout', this._handlePerimeterFocusOut);
+        this.queuePerimeterPointerUpdate();
         window.setTimeout(() => {
             void this.autoStartIfReady();
         }, 250);
@@ -352,6 +462,11 @@ export class CheatingDaddyApp extends LitElement {
         this.clearPendingFocusSync();
 
         super.disconnectedCallback();
+        window.removeEventListener('mousemove', this._handlePerimeterMouseMove);
+        window.removeEventListener('mouseleave', this._handlePerimeterMouseLeave);
+        this.removeEventListener('focusin', this._handlePerimeterFocusIn);
+        this.removeEventListener('focusout', this._handlePerimeterFocusOut);
+        void this.setPointerPassThrough(false);
         if (window.electron) {
             window.electron.removeUpdateResponseListener?.(this._updateResponseHandler);
             window.electron.removeUpdateStatusListener?.(this._updateStatusHandler);
@@ -367,9 +482,72 @@ export class CheatingDaddyApp extends LitElement {
         return this.layoutMode;
     }
 
+    isGlassFrameAssistant() {
+        return this.currentView === 'assistant' && this.layoutMode === 'glass-frame';
+    }
+
+    async setPointerPassThrough(enabled) {
+        const nextValue = Boolean(enabled);
+        if (this._lastPointerPassThrough === nextValue) {
+            return;
+        }
+        this._lastPointerPassThrough = nextValue;
+        if (!window.electron?.setMouseEventsIgnored) {
+            return;
+        }
+        try {
+            await window.electron.setMouseEventsIgnored(nextValue);
+        } catch (error) {
+            logger.warn('Failed to update pointer passthrough:', error);
+        }
+    }
+
+    isPointOverOverlayPanel(x, y) {
+        const element = this.shadowRoot?.elementFromPoint?.(x, y);
+        return Boolean(element?.closest?.('app-header, assistant-view, side-panel'));
+    }
+
+    updatePerimeterPointerMode(forcePassthrough = false) {
+        if (!this.isGlassFrameAssistant()) {
+            void this.setPointerPassThrough(false);
+            return;
+        }
+
+        if (this._panelInputFocused) {
+            void this.setPointerPassThrough(false);
+            return;
+        }
+
+        const { x, y } = this._lastPointerPoint;
+        const overPanel = !forcePassthrough && this.isPointOverOverlayPanel(x, y);
+        void this.setPointerPassThrough(!overPanel);
+    }
+
+    queuePerimeterPointerUpdate() {
+        if (this._pointerUpdateFrame) {
+            return;
+        }
+        this._pointerUpdateFrame = requestAnimationFrame(() => {
+            this._pointerUpdateFrame = null;
+            this.updatePerimeterPointerMode();
+        });
+    }
+
+    handlePerimeterMouseMove(e) {
+        this._lastPointerPoint = { x: e.clientX, y: e.clientY };
+        this.queuePerimeterPointerUpdate();
+    }
+
     getInitialLayoutMode() {
         const storedLayoutMode = localStorage.getItem('layoutMode');
+        const migratedToGlassFrame = localStorage.getItem('layoutModeGlassFrameMigration') === 'true';
         const migratedToDock = localStorage.getItem('layoutModeSideDockMigration') === 'true';
+
+        if (!migratedToGlassFrame && (!storedLayoutMode || storedLayoutMode === 'normal' || storedLayoutMode === 'side-dock')) {
+            localStorage.setItem('layoutMode', 'glass-frame');
+            localStorage.setItem('layoutModeGlassFrameMigration', 'true');
+            return 'glass-frame';
+        }
 
         if (!migratedToDock && (!storedLayoutMode || storedLayoutMode === 'normal')) {
             localStorage.setItem('layoutMode', 'side-dock');
@@ -377,7 +555,7 @@ export class CheatingDaddyApp extends LitElement {
             return 'side-dock';
         }
 
-        return storedLayoutMode || 'side-dock';
+        return storedLayoutMode || 'glass-frame';
     }
 
     getContentProtection() {
@@ -1334,6 +1512,9 @@ export class CheatingDaddyApp extends LitElement {
         if (changedProperties.has('advancedMode')) {
             localStorage.setItem('advancedMode', this.advancedMode.toString());
         }
+        if (changedProperties.has('currentView') || changedProperties.has('layoutMode')) {
+            this.queuePerimeterPointerUpdate();
+        }
     }
 
     renderCurrentView() {
@@ -1453,7 +1634,9 @@ export class CheatingDaddyApp extends LitElement {
         const mainContentClass = `main-content ${
             this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border'
         }`;
-        const windowContainerClass = `window-container ${this.layoutMode === 'side-dock' ? 'side-dock-layout' : ''}`;
+        const windowContainerClass = `window-container ${this.layoutMode === 'side-dock' ? 'side-dock-layout' : ''} ${
+            this.layoutMode === 'glass-frame' ? 'glass-frame-layout' : ''
+        }`;
 
         return html`
             <div class="${windowContainerClass}">
@@ -1484,6 +1667,8 @@ export class CheatingDaddyApp extends LitElement {
     updateLayoutMode() {
         document.documentElement.classList.toggle('compact-layout', this.layoutMode === 'compact');
         document.documentElement.classList.toggle('side-dock-layout', this.layoutMode === 'side-dock');
+        document.documentElement.classList.toggle('glass-frame-layout', this.layoutMode === 'glass-frame');
+        this.queuePerimeterPointerUpdate();
     }
 
     async handleLayoutModeChange(layoutMode) {

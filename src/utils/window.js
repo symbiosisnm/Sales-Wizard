@@ -10,6 +10,20 @@ let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
 const DOCK_MARGIN = 14;
 
+function setWindowMouseEventsIgnored(mainWindow, ignored) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    mouseEventsIgnored = Boolean(ignored);
+    if (mouseEventsIgnored) {
+        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+        mainWindow.setIgnoreMouseEvents(false);
+    }
+    mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
+}
+
 function ensureDataDirectories() {
     const homeDir = os.homedir();
     const cheddarDir = path.join(homeDir, 'cheddar');
@@ -243,15 +257,8 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     if (keybinds.toggleClickThrough) {
         try {
             globalShortcut.register(keybinds.toggleClickThrough, () => {
-                mouseEventsIgnored = !mouseEventsIgnored;
-                if (mouseEventsIgnored) {
-                    mainWindow.setIgnoreMouseEvents(true, { forward: true });
-                    logger.info('Mouse events ignored');
-                } else {
-                    mainWindow.setIgnoreMouseEvents(false);
-                    logger.info('Mouse events enabled');
-                }
-                mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
+                setWindowMouseEventsIgnored(mainWindow, !mouseEventsIgnored);
+                logger.info(mouseEventsIgnored ? 'Mouse events ignored' : 'Mouse events enabled');
             });
             logger.info(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
         } catch (error) {
@@ -377,7 +384,22 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
     ipcMain.on('view-changed', (event, view) => {
         if (view !== 'assistant' && !mainWindow.isDestroyed()) {
-            mainWindow.setIgnoreMouseEvents(false);
+            setWindowMouseEventsIgnored(mainWindow, false);
+        }
+    });
+
+    ipcMain.handle('set-mouse-events-ignored', (_event, ignored) => {
+        try {
+            if (mainWindow.isDestroyed()) {
+                return { success: false, error: 'Window has been destroyed' };
+            }
+            if (mouseEventsIgnored !== Boolean(ignored)) {
+                setWindowMouseEventsIgnored(mainWindow, ignored);
+            }
+            return { success: true, ignored: mouseEventsIgnored };
+        } catch (error) {
+            logger.error('Error setting mouse event passthrough:', error);
+            return { success: false, error: error.message };
         }
     });
 
@@ -445,6 +467,14 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                 targetHeight = baseHeight;
                 break;
             case 'assistant':
+                if (layoutMode === 'glass-frame') {
+                    return {
+                        height: workArea.height,
+                        width: workArea.width,
+                        x: workArea.x,
+                        y: workArea.y,
+                    };
+                }
                 if (layoutMode === 'side-dock') {
                     targetWidth = Math.min(540, Math.max(460, Math.floor(workArea.width * 0.28)));
                     targetHeight = Math.max(520, workArea.height - DOCK_MARGIN * 2);

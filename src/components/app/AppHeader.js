@@ -137,6 +137,58 @@ export class AppHeader extends LitElement {
         :host-context(.side-dock-layout) .key {
             display: none;
         }
+
+        :host-context(.glass-frame-layout) .header {
+            padding: 8px 10px;
+            border-radius: 999px;
+            background:
+                linear-gradient(135deg, rgba(8, 18, 33, 0.52), rgba(8, 18, 33, 0.24)),
+                rgba(255, 255, 255, 0.035);
+            border-color: rgba(255, 255, 255, 0.12);
+            box-shadow:
+                0 18px 55px rgba(0, 0, 0, 0.24),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(22px) saturate(150%);
+            -webkit-backdrop-filter: blur(22px) saturate(150%);
+        }
+
+        :host-context(.glass-frame-layout) .header-title {
+            max-width: 136px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12px;
+        }
+
+        :host-context(.glass-frame-layout) .header-actions {
+            min-width: 0;
+            gap: 6px;
+        }
+
+        :host-context(.glass-frame-layout) .header-actions span {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 10px;
+        }
+
+        :host-context(.glass-frame-layout) .button {
+            max-width: 48px;
+            overflow: hidden;
+            white-space: nowrap;
+            padding: 5px 9px;
+            border-radius: 999px;
+        }
+
+        :host-context(.glass-frame-layout) .icon-button {
+            padding: 5px;
+            border-radius: 999px;
+        }
+
+        :host-context(.glass-frame-layout) .key {
+            display: none;
+        }
     `;
 
     static properties = {

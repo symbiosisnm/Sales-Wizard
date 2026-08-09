@@ -438,7 +438,7 @@ export class CustomizeView extends LitElement {
         this.selectedLanguage = 'en-US';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
-        this.layoutMode = 'side-dock';
+        this.layoutMode = 'glass-frame';
         this.keybinds = this.getDefaultKeybinds();
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
@@ -1184,17 +1184,26 @@ export class CustomizeView extends LitElement {
                                 <label class="form-label">
                                     Layout Mode
                                     <span class="current-selection"
-                                        >${this.layoutMode === 'side-dock' ? 'Side Dock' : this.layoutMode === 'compact' ? 'Compact' : 'Normal'}</span
+                                        >${this.layoutMode === 'glass-frame'
+                                            ? 'Glass Frame'
+                                            : this.layoutMode === 'side-dock'
+                                            ? 'Side Dock'
+                                            : this.layoutMode === 'compact'
+                                            ? 'Compact'
+                                            : 'Normal'}</span
                                     >
                                 </label>
                                 <select class="form-control" .value=${this.layoutMode} @change=${this.handleLayoutModeSelect}>
+                                    <option value="glass-frame" ?selected=${this.layoutMode === 'glass-frame'}>Glass Frame</option>
                                     <option value="side-dock" ?selected=${this.layoutMode === 'side-dock'}>Side Dock</option>
                                     <option value="normal" ?selected=${this.layoutMode === 'normal'}>Normal</option>
                                     <option value="compact" ?selected=${this.layoutMode === 'compact'}>Compact</option>
                                 </select>
                                 <div class="form-description">
                                     ${
-                                        this.layoutMode === 'side-dock'
+                                        this.layoutMode === 'glass-frame'
+                                            ? 'Full-screen perimeter overlay with a transparent center workspace for CRM, browser, product pages, and technical work'
+                                            : this.layoutMode === 'side-dock'
                                             ? 'Narrow right-side overlay that keeps your CRM, browser, and product pages usable while live help stays visible'
                                             : this.layoutMode === 'compact'
                                             ? 'Smaller window size with reduced padding and font sizes for minimal screen footprint'
