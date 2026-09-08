@@ -10,24 +10,36 @@ import { ocrBytes } from '../services/ocr';
 export function App() {
   const s = useStore();
   const [connected, setConnected] = useState(false);
+  const [micActive, setMicActive] = useState(false);
+  const [screenActive, setScreenActive] = useState(false);
+  const [message, setMessage] = useState('');
   const client = useMemo(() => new LLMClient({
-    url: (s.serverUrl || 'http://localhost:8787').replace('http','ws').replace('https','wss') + '/ws/live'
+    url: (s.serverUrl || 'http://localhost:8787').replace('http', 'ws').replace('https', 'wss') + '/ws/live'
   }), [s.serverUrl]);
   const screenRef = useRef<ScreenCapture | null>(null);
   const audioRef = useRef<AudioCapture | null>(null);
 
   useEffect(() => {
     client.onText = (text) => {
-      s.addLog({ kind: 'model', text });
-      if (s.ttsEnabled) (window as any).electronAPI?.speak(text);
+      const store = useStore.getState();
+      store.addLog({ kind: 'model', text });
+      if (store.ttsEnabled) (window as any).electronAPI?.speak(text);
     };
-    client.onStatus = (text) => s.addLog({ kind: 'status', text });
-    client.onError = (text) => s.addLog({ kind: 'error', text });
+    client.onStatus = (text) => useStore.getState().addLog({ kind: 'status', text });
+    client.onError = (text) => useStore.getState().addLog({ kind: 'error', text });
     client.onAudio = (data, mime) => {
       const audio = new Audio(`data:${mime};base64,${data}`);
       audio.play().catch(() => {});
     };
-  }, [client, s]);
+
+    return () => {
+      void audioRef.current?.stop();
+      void screenRef.current?.stop();
+      audioRef.current = null;
+      screenRef.current = null;
+      client.end();
+    };
+  }, [client]);
 
   async function connect() {
     try {
@@ -43,79 +55,130 @@ export function App() {
     }
   }
 
-  function disconnect() {
+  async function disconnect() {
+    await stopMic();
+    await stopScreen();
     client.end();
     setConnected(false);
+    s.addLog({ kind: 'status', text: 'Disconnected' });
   }
 
   async function startMic() {
-    if (!audioRef.current) audioRef.current = new AudioCapture({
+    if (!connected) {
+      s.addLog({ kind: 'error', text: 'Connect before starting the microphone.' });
+      return;
+    }
+    if (audioRef.current) return;
+
+    audioRef.current = new AudioCapture({
       onPcm16Base64: (b64) => client.sendPcm16Base64(b64),
       onLocalPCM16: async (pcm16) => {
         if (!s.localAsr) return;
         try {
           const text = await transcribePCM16(pcm16);
           if (text) s.addLog({ kind: 'status', text: `[local ASR] ${text}` });
-        } catch (e:any) {
-          s.addLog({ kind: 'error', text: `local ASR error: ${String(e)}` });
+        } catch (e: any) {
+          s.addLog({ kind: 'error', text: `Local ASR error: ${String(e)}` });
         }
       },
       onError: (e) => s.addLog({ kind: 'error', text: `Mic error: ${String(e)}` }),
     });
-    await audioRef.current.start().then(() => {
+
+    try {
+      await audioRef.current.start();
+      setMicActive(true);
       s.addLog({ kind: 'status', text: 'Mic started' });
-    }).catch(() => {});
+    } catch (e: any) {
+      audioRef.current = null;
+      s.addLog({ kind: 'error', text: `Could not start mic: ${String(e)}` });
+    }
   }
 
   async function stopMic() {
-    await audioRef.current?.stop();
-    audioRef.current = null;
+    const audio = audioRef.current;
+    if (!audio) return;
+    await audio.stop();
+    if (audioRef.current === audio) audioRef.current = null;
+    setMicActive(false);
     s.addLog({ kind: 'status', text: 'Mic stopped' });
   }
 
   async function shareScreen() {
-    if (!screenRef.current) screenRef.current = new ScreenCapture({
+    if (!connected) {
+      s.addLog({ kind: 'error', text: 'Connect before sharing your screen.' });
+      return;
+    }
+    if (screenRef.current) return;
+
+    screenRef.current = new ScreenCapture({
       fps: s.screenFrameFps,
       onJpegBase64: (b64) => client.sendJpegBase64(b64),
       onLocalJpegBytes: async (bytes) => {
         if (!s.localOcr) return;
         try {
           const text = await ocrBytes(bytes);
-          if (text) s.addLog({ kind: 'status', text: `[local OCR] ${text.slice(0,200)}${text.length>200?'…':''}` });
-        } catch (e:any) {
-          s.addLog({ kind: 'error', text: `local OCR error: ${String(e)}` });
+          if (text) s.addLog({ kind: 'status', text: `[local OCR] ${text.slice(0, 200)}${text.length > 200 ? '…' : ''}` });
+        } catch (e: any) {
+          s.addLog({ kind: 'error', text: `Local OCR error: ${String(e)}` });
         }
       },
       onError: (e) => s.addLog({ kind: 'error', text: `Screen error: ${String(e)}` }),
     });
-    await screenRef.current.start().then(() => {
+
+    try {
+      await screenRef.current.start();
+      setScreenActive(true);
       s.addLog({ kind: 'status', text: 'Screen sharing started' });
-    }).catch(() => {});
+    } catch (e: any) {
+      screenRef.current = null;
+      s.addLog({ kind: 'error', text: `Could not share screen: ${String(e)}` });
+    }
   }
 
   async function stopScreen() {
-    await screenRef.current?.stop();
-    screenRef.current = null;
+    const screen = screenRef.current;
+    if (!screen) return;
+    await screen.stop();
+    if (screenRef.current === screen) screenRef.current = null;
+    setScreenActive(false);
     s.addLog({ kind: 'status', text: 'Screen sharing stopped' });
   }
 
-  function sendText(text: string) {
+  function sendText() {
+    const text = message.trim();
+    if (!text) return;
+    if (!connected) {
+      s.addLog({ kind: 'error', text: 'Connect before sending a message.' });
+      return;
+    }
     client.sendText(text);
+    setMessage('');
   }
 
   return (
     <div>
       <div>
-        {connected ? <button onClick={disconnect}>Disconnect</button> : <button onClick={connect}>Connect</button>}
-        <button onClick={startMic}>Start Mic</button>
-        <button onClick={stopMic}>Stop Mic</button>
-        <button onClick={shareScreen}>Share Screen</button>
-        <button onClick={stopScreen}>Stop Screen</button>
+        <span role="status">{connected ? 'Connected' : 'Disconnected'}</span>
+        {connected
+          ? <button onClick={disconnect}>Disconnect</button>
+          : <button onClick={connect}>Connect</button>}
+        <button onClick={startMic} disabled={!connected || micActive}>Start Mic</button>
+        <button onClick={stopMic} disabled={!micActive}>Stop Mic</button>
+        <button onClick={shareScreen} disabled={!connected || screenActive}>Share Screen</button>
+        <button onClick={stopScreen} disabled={!screenActive}>Stop Screen</button>
       </div>
       <div>
-        <input type="text" onKeyDown={e => { if (e.key === 'Enter') { sendText((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value=''; } }} />
+        <input
+          type="text"
+          value={message}
+          aria-label="Message"
+          placeholder="Send a message"
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') sendText(); }}
+        />
+        <button onClick={sendText} disabled={!connected || !message.trim()}>Send</button>
       </div>
-      <div style={{ maxHeight: 200, overflow: 'auto', background: '#eee', padding: 8 }}>
+      <div aria-live="polite" style={{ maxHeight: 200, overflow: 'auto', background: '#eee', padding: 8 }}>
         {s.logs.map((l, i) => (
           <div key={i}><b>[{l.kind}]</b> {l.text}</div>
         ))}
