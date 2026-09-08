@@ -21,11 +21,12 @@ export function App() {
 
   useEffect(() => {
     client.onText = (text) => {
-      s.addLog({ kind: 'model', text });
-      if (s.ttsEnabled) (window as any).electronAPI?.speak(text);
+      const store = useStore.getState();
+      store.addLog({ kind: 'model', text });
+      if (store.ttsEnabled) (window as any).electronAPI?.speak(text);
     };
-    client.onStatus = (text) => s.addLog({ kind: 'status', text });
-    client.onError = (text) => s.addLog({ kind: 'error', text });
+    client.onStatus = (text) => useStore.getState().addLog({ kind: 'status', text });
+    client.onError = (text) => useStore.getState().addLog({ kind: 'error', text });
     client.onAudio = (data, mime) => {
       const audio = new Audio(`data:${mime};base64,${data}`);
       audio.play().catch(() => {});
@@ -38,7 +39,7 @@ export function App() {
       screenRef.current = null;
       client.end();
     };
-  }, [client, s]);
+  }, [client]);
 
   async function connect() {
     try {
