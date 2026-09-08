@@ -1,6 +1,8 @@
 // apps/desktop/src/utils/store.ts
 import create from 'zustand';
 
+const MAX_LOG_ENTRIES = 500;
+
 export type LogEntry = { kind: 'model' | 'status' | 'error'; text: string };
 
 interface StoreState {
@@ -24,7 +26,9 @@ interface StoreState {
 
 export const useStore = create<StoreState>((set) => ({
   logs: [],
-  addLog: (log) => set((s) => ({ logs: [...s.logs, log] })),
+  addLog: (log) => set((s) => ({
+    logs: [...s.logs, log].slice(-MAX_LOG_ENTRIES),
+  })),
   ttsEnabled: true,
   localAsr: true,
   localOcr: true,
