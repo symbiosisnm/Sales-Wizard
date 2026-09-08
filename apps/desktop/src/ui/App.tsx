@@ -95,9 +95,10 @@ export function App() {
   }
 
   async function stopMic() {
-    if (!audioRef.current) return;
-    await audioRef.current.stop();
-    audioRef.current = null;
+    const audio = audioRef.current;
+    if (!audio) return;
+    await audio.stop();
+    if (audioRef.current === audio) audioRef.current = null;
     setMicActive(false);
     s.addLog({ kind: 'status', text: 'Mic stopped' });
   }
@@ -135,9 +136,10 @@ export function App() {
   }
 
   async function stopScreen() {
-    if (!screenRef.current) return;
-    await screenRef.current.stop();
-    screenRef.current = null;
+    const screen = screenRef.current;
+    if (!screen) return;
+    await screen.stop();
+    if (screenRef.current === screen) screenRef.current = null;
     setScreenActive(false);
     s.addLog({ kind: 'status', text: 'Screen sharing stopped' });
   }
